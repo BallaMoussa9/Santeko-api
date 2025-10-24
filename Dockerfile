@@ -1,30 +1,26 @@
 FROM php:8.2-fpm
 
-# Répertoire de travail
-WORKDIR /var/www/html
+# Définir le répertoire de travail
+WORKDIR /var/www
 
-# Dépendances système
+# Installer dépendances système
 RUN apt-get update && apt-get install -y \
-    git curl zip unzip libpng-dev libonig-dev libxml2-dev libzip-dev && \
-    docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip
+    libpng-dev libonig-dev libxml2-dev zip unzip git curl \
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
 
 # Installer Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Copier le code Laravel
+# Copier le code source
 COPY . .
 
-# Installer les dépendances PHP
-RUN composer install --no-dev --optimize-autoloader
+# Installer les dépendances Laravel
+RUN composer install --optimize-autoloader --no-dev
 
-# Donner les bons droits à Laravel
-RUN chown -R www-data:www-data storage bootstrap/cache
+# Donner les bons droits
+RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
 
-# Générer la clé Laravel
-RUN php artisan key:generate --force
-
-# Exposer le port PHP-FPM
+# Port exposé
 EXPOSE 9000
 
-# Lancer le serveur PHP-FPM
-CMD ["php-fpm"]
+CMD php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=9000
