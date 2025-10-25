@@ -1,10 +1,9 @@
-# --- IMAGE DE BASE ---
 FROM php:8.2-fpm
 
-# --- DÉFINIR LE RÉPERTOIRE DE TRAVAIL ---
+# Définir le répertoire de travail
 WORKDIR /var/www
 
-# --- INSTALLER DÉPENDANCES SYSTÈME ---
+# Installer les dépendances système nécessaires à Laravel et MySQL
 RUN apt-get update && apt-get install -y \
     libpng-dev \
     libonig-dev \
@@ -15,27 +14,23 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# --- INSTALLER EXTENSIONS PHP (MySQL) ---
+# Installer les extensions PHP nécessaires
 RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
 
-# --- INSTALLER COMPOSER ---
+# Installer Composer depuis l'image officielle
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# --- COPIER LE CODE SOURCE ---
+# Copier le code source de l'application Laravel
 COPY . .
 
-# --- INSTALLER DÉPENDANCES LARAVEL POUR LA PROD ---
+# Installer les dépendances Laravel (production)
 RUN composer install --optimize-autoloader --no-dev
 
-# --- OPTIMISATIONS LARAVEL (sans key:generate) ---
-RUN php artisan config:cache \
- && php artisan route:cache
-
-# --- DROITS SUR LES DOSSIERS LARAVEL ---
+# Donner les bons droits à Laravel
 RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
 
-# --- PORT EXPOSE (PHP-FPM) ---
+# Exposer le port standard FPM
 EXPOSE 9000
 
-# --- COMMANDE DE DÉMARRAGE ---
+# Commande de démarrage (PHP-FPM)
 CMD ["php-fpm"]
