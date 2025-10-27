@@ -22,7 +22,7 @@ return new class extends Migration
 
             // Rendre nullables les autres champs
             $table->text('chronic_conditions')->nullable()->change();
-            $table->string('numero_dossier')->nullable()->change();
+            $table->string('numero_dossier')->nullable();
 
             // Rendre nullable l'ENUM 'status'.
             // ATTENTION: Nous supprimons la valeur par défaut '[active]'
