@@ -15,14 +15,7 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        // Table pivot pour relier les utilisateurs et les conversations
-        Schema::create('conversation_user', function (Blueprint $table) {
-            $table->foreignId('conversation_id')->constrained()->onDelete('cascade');
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->primary(['conversation_id', 'user_id']); // Clé primaire composée
-            $table->timestamp('last_read_at')->nullable(); // Pour le statut de lecture
-            $table->timestamps();
-        });
+
     }
 
     public function down(): void
