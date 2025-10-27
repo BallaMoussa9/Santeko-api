@@ -30,17 +30,18 @@ RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
 EXPOSE 8080
 
 # -----------------------------
-# 🧠 Commandes exécutées au démarrage du conteneur :
-# 1. Nettoyer la config et le cache
+# 🚀 Commandes exécutées au démarrage :
+# 1. Nettoyer le cache/config
 # 2. Recompiler la config
-# 3. Créer le lien storage/public
-# 4. Supprimer toutes les tables (⚠️ destructive)
-# 5. Exécuter les migrations fraîches (--force pour la prod)
+# 3. Créer le lien storage/public (ignore si déjà présent)
+# 4. Supprimer toutes les tables existantes
+# 5. Recréer toutes les tables (migrations)
 # 6. Lancer le serveur Laravel
 # -----------------------------
 CMD php artisan config:clear && \
     php artisan cache:clear && \
     php artisan config:cache && \
     php artisan storage:link || true && \
-    php artisan migrate:fresh --force && \
+    php artisan db:wipe --force && \
+    php artisan migrate --force && \
     php artisan serve --host=0.0.0.0 --port=8080
