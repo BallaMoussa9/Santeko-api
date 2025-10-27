@@ -1,4 +1,3 @@
-# Utilise PHP 8.2
 FROM php:8.2-cli
 
 # Définir le répertoire de travail
@@ -9,26 +8,38 @@ RUN apt-get update && apt-get install -y \
     libpng-dev libonig-dev libxml2-dev zip unzip git curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Installer les extensions PHP
+# Installer les extensions PHP nécessaires à Laravel
 RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
 
 # Copier Composer depuis l'image officielle
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Copier le code source
+# Copier le code source de Laravel dans le conteneur
 COPY . .
 
-# Installer les dépendances Laravel
+# Installer les dépendances Laravel sans les paquets de dev
 RUN composer install --optimize-autoloader --no-dev
 
-# Générer la clé d'application (si elle n'existe pas)
+# Générer une clé d'application (au cas où elle n'existe pas)
 RUN php artisan key:generate --force || true
 
-# Donner les bons droits
+# Donner les bons droits à Laravel
 RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
 
-# Exposer le port que Railway attend
+# Exposer le port attendu par Railway
 EXPOSE 8080
 
-# Lancer le serveur Laravel
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
+# -----------------------------
+# 🧠 Commandes exécutées au démarrage du conteneur :
+# 1. Nettoyer la config et le cache
+# 2. Recompiler la config
+# 3. Créer le lien storage/public
+# 4. Exécuter les migrations (avec --force pour éviter la confirmation)
+# 5. Lancer le serveur Laravel
+# -----------------------------
+CMD php artisan config:clear && \
+    php artisan cache:clear && \
+    php artisan config:cache && \
+    php artisan storage:link || true && \
+    php artisan migrate --force && \
+    php artisan serve --host=0.0.0.0 --port=8080
