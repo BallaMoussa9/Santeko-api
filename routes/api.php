@@ -363,3 +363,6 @@ Route::middleware('auth:sanctum')->group(function () {
         });
 
 }); // Fin du groupe middleware('auth:sanctum')
+Route::get('/', function () {
+    return 'Bienvenue sur l’API Santeko';
+});
