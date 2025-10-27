@@ -14,7 +14,7 @@ RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
 # Copier Composer depuis l'image officielle
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Copier le code source de Laravel dans le conteneur
+# Copier le code source Laravel dans le conteneur
 COPY . .
 
 # Installer les dépendances Laravel sans les paquets de dev
@@ -34,12 +34,13 @@ EXPOSE 8080
 # 1. Nettoyer la config et le cache
 # 2. Recompiler la config
 # 3. Créer le lien storage/public
-# 4. Exécuter les migrations (avec --force pour éviter la confirmation)
-# 5. Lancer le serveur Laravel
+# 4. Supprimer toutes les tables (⚠️ destructive)
+# 5. Exécuter les migrations fraîches (--force pour la prod)
+# 6. Lancer le serveur Laravel
 # -----------------------------
 CMD php artisan config:clear && \
     php artisan cache:clear && \
     php artisan config:cache && \
     php artisan storage:link || true && \
-    php artisan migrate --force && \
+    php artisan migrate:fresh --force && \
     php artisan serve --host=0.0.0.0 --port=8080
