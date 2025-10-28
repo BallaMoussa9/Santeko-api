@@ -1,47 +1,36 @@
 FROM php:8.2-cli
 
-# Définir le répertoire de travail
 WORKDIR /var/www
 
-# Installer les dépendances système nécessaires à Laravel
+# Installer les dépendances
 RUN apt-get update && apt-get install -y \
     libpng-dev libonig-dev libxml2-dev zip unzip git curl \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Installer les extensions PHP nécessaires à Laravel
-RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
+# Installer les extensions PHP
+RUN docker-php-ext-install pdo_pgsql pgsql mbstring exif pcntl bcmath gd
 
-# Copier Composer depuis l'image officielle
+# Copier Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Copier le code source Laravel dans le conteneur
+# Copier d'abord seulement composer.json pour le cache Docker
+COPY composer.json composer.lock* ./
+RUN composer install --optimize-autoloader --no-dev --no-scripts
+
+# Copier le reste du code
 COPY . .
 
-# Installer les dépendances Laravel sans les paquets de dev
-RUN composer install --optimize-autoloader --no-dev
+# Finaliser Composer
+RUN composer dump-autoload --optimize
 
-# Générer une clé d'application (au cas où elle n'existe pas)
-RUN php artisan key:generate --force || true
-
-# Donner les bons droits à Laravel
+# Permissions
 RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
 
-# Exposer le port attendu par Railway
-EXPOSE 8080
+EXPOSE $PORT
 
-# -----------------------------
-# 🚀 Commandes exécutées au démarrage :
-# 1. Nettoyer le cache/config
-# 2. Recompiler la config
-# 3. Créer le lien storage/public (ignore si déjà présent)
-# 4. Supprimer toutes les tables existantes
-# 5. Recréer toutes les tables (migrations)
-# 6. Lancer le serveur Laravel
-# -----------------------------
-CMD php artisan config:clear && \
-    php artisan cache:clear && \
-    php artisan config:cache && \
-    php artisan storage:link || true && \
-    php artisan db:wipe --force && \
-    php artisan migrate --force && \
-    php artisan serve --host=0.0.0.0 --port=8080
+CMD sh -c "php artisan config:cache && \
+           php artisan route:cache && \
+           php artisan view:cache && \
+           php artisan migrate --force && \
+           php artisan serve --host=0.0.0.0 --port=$PORT"
