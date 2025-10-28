@@ -1,47 +1,31 @@
-FROM php:8.2-cli
+FROM php:8.2-apache
 
-# Définir le répertoire de travail
-WORKDIR /var/www
+# Dossier de travail
+WORKDIR /var/www/html
 
-# Installer les dépendances système nécessaires à Laravel
+# Installer les dépendances nécessaires à Laravel et PostgreSQL
 RUN apt-get update && apt-get install -y \
-    libpng-dev libonig-dev libxml2-dev zip unzip git curl \
-    && rm -rf /var/lib/apt/lists/*
+    git zip unzip libpng-dev libjpeg-dev libfreetype6-dev libonig-dev libxml2-dev curl libpq-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install pdo pdo_pgsql mbstring exif pcntl bcmath gd
 
-# Installer les extensions PHP nécessaires à Laravel
-RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
-
-# Copier Composer depuis l'image officielle
+# Copier Composer depuis l’image officielle
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Copier le code source Laravel dans le conteneur
+# Copier les fichiers Laravel
 COPY . .
 
-# Installer les dépendances Laravel sans les paquets de dev
+# Installer les dépendances Laravel
 RUN composer install --optimize-autoloader --no-dev
 
-# Générer une clé d'application (au cas où elle n'existe pas)
-RUN php artisan key:generate --force || true
-
 # Donner les bons droits à Laravel
-RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
+RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
-# Exposer le port attendu par Railway
-EXPOSE 8080
+# Supprimer les caches
+RUN php artisan config:clear && php artisan cache:clear
 
-# -----------------------------
-# 🚀 Commandes exécutées au démarrage :
-# 1. Nettoyer le cache/config
-# 2. Recompiler la config
-# 3. Créer le lien storage/public (ignore si déjà présent)
-# 4. Supprimer toutes les tables existantes
-# 5. Recréer toutes les tables (migrations)
-# 6. Lancer le serveur Laravel
-# -----------------------------
-CMD php artisan config:clear && \
-    php artisan cache:clear && \
-    php artisan config:cache && \
-    php artisan storage:link || true && \
-    php artisan db:wipe --force && \
-    php artisan migrate --force && \
-    php artisan serve --host=0.0.0.0 --port=8080
+# Exposer le port utilisé par Render
+EXPOSE 10000
+
+# Commande de démarrage
+CMD php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=10000
