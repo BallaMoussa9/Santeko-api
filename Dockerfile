@@ -22,7 +22,6 @@ RUN composer install --optimize-autoloader --no-dev
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
 # Supprimer les caches
-RUN php artisan config:clear && php artisan cache:clear
 
 # Exposer le port utilisé par Render
 EXPOSE 10000
