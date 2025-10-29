@@ -18,7 +18,6 @@ return new class extends Migration
             $table->string('diagnosis')->nullable();
             $table->text('chronic_conditions')->nullable();
             $table->enum('status', ['active', 'inactive'])->nullable();
-            $table->unsignedBigInteger('hospital_id')->nullable();
             $table->string('numero_dossier')->nullable();
             $table->timestamps();
         });
