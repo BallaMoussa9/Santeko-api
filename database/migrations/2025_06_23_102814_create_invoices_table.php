@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('invoices', function (Blueprint $table) {
             $table->id();
             $table->decimal('amount', 10, 2)->nullable();
-            $table->string('status')->nullable();
+            $table->enum('status', ['pending', 'paid', 'canceled'])->nullable();
             $table->date('paid_date')->nullable();
             $table->text('notes')->nullable();
             $table->timestamps();

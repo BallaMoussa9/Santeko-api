@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('nom')->nullable();
             $table->string('code')->unique()->nullable();
             $table->string('pays')->nullable();
-            $table->string('type')->nullable();
+            $table->enum('type', ['urbain', 'rural'])->nullable();
             $table->timestamps();
         });
     }

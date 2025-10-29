@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('type')->nullable();
             $table->string('motif')->nullable();
             $table->text('diagnostic')->nullable();
-            $table->string('status')->nullable();
+            $table->enum('status', ['pending', 'confirmed', 'canceled'])->nullable();
             $table->text('traitement')->nullable();
             $table->text('notes')->nullable();
             $table->text('observations')->nullable();

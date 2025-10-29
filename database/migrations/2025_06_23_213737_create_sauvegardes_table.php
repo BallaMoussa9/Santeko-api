@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('sauvegardes', function (Blueprint $table) {
             $table->id();
             $table->string('type')->nullable();
-            $table->string('status')->nullable();
+            $table->enum('status',['successful', 'failed', 'in_progress', 'scheduled'])->default('successful')->nullable();
             $table->string('file_path')->nullable();
             $table->float('file_size')->nullable();
             $table->dateTime('started_at')->nullable();

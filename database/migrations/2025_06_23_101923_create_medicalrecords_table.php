@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('treatment_plan')->nullable();
             $table->string('diagnosis')->nullable();
             $table->text('chronic_conditions')->nullable();
-            $table->string('status')->nullable();
+            $table->enum('status', ['active', 'inactive'])->nullable();
 
             $table->timestamps();
         });

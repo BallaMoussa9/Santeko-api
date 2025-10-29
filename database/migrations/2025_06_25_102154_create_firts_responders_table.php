@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger('user_id')->unique()->nullable(); // Assure that each user can only be a first responder once
             $table->string('speciality')->nullable();
-            $table->string('status')->default('available')->nullable(); // available, on_call, unavailable
+            $table->enum('status', ['available', 'on_call', 'unavailable'])->default('available')->nullable();
             $table->string('location')->nullable();
             $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
             $table->timestamps();

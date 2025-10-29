@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->integer('total_required_dose')->nullable();
             $table->date('administration_date')->nullable();
-            $table->string('status')->nullable();
+            $table->enum('status', ['pending', 'completed', 'canceled'])->nullable();
             $table->string('localiter')->nullable();
             $table->text('notes')->nullable();
             $table->timestamps();

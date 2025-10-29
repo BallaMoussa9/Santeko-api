@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->string('name')->nullable();
             $table->string('type')->nullable();
-            $table->string('status')->nullable();
+            $table->enum('status', ['pending', 'in_progress', 'completed'])->nullable();
             $table->timestamps();
         });
     }

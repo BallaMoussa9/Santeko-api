@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->text('result_text')->nullable();
             $table->string('result_file')->nullable();
-            $table->string('status')->nullable();
+            $table->enum('status', ['pending', 'in_progress', 'completed'])->nullable();
             $table->string('analyse_type')->nullable();
             $table->dateTime('validated_at')->nullable();
             $table->text('comments')->nullable();

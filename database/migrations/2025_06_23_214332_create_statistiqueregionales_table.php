@@ -23,7 +23,7 @@ return new class extends Migration
             $table->integer('total_vaccinations')->nullable();;
             $table->float('taux_paiement')->nullable();;
             $table->float('taux_rdv_annules')->nullable();;
-            $table->string('status')->nullable();
+            $table->enum('status', ['active', 'inactive'])->nullable();
             $table->timestamps();
         });
     }

@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('description')->nullable();
             $table->string('type')->default('string')->nullable(); // e.g., string, integer
             $table->string('category')->default('general')->nullable(); // e.g., general, security, appearance
-            $table->string('status')->default('active')->nullable(); // e.g., active, inactive
+            $table->enum('status', ['active', 'inactive'])->default('active')->nullable(); // e.g., active, inactive
             $table->boolean('is_editable')->default(true)->nullable(); // Indicates if the setting can be edited by users
             $table->boolean('is_visible')->default(true)->nullable(); // Indicates if the setting is visible
             $table->boolean('is_required')->default(false)->nullable(); // Indicates if the setting is required

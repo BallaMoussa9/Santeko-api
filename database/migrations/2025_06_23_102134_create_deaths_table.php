@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('lieu_deces')->nullable();
             $table->string('cause_deces')->nullable();
             $table->text('circonstances_deces')->nullable();
-            $table->string('statut')->default('pending')->nullable(); // pending, confirmed, etc
+            $table->enum('statut', ['pending', 'confirmed', 'canceled'])->default('pending')->nullable();
             $table->string('numero_acte_deces')->unique()->nullable();
             $table->timestamps();
         });

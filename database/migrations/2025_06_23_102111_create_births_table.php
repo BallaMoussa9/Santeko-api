@@ -23,7 +23,7 @@ return new class extends Migration
             $table->float('poids')->nullable();
             $table->float('taille')->nullable();
             $table->time('heure_naissance')->nullable();
-            $table->string('statut')->nullable();
+            $table->enum('statut', ['pending', 'confirmed', 'canceled'])->nullable();
             $table->string('numero_acte_naissance')->nullable();
             $table->timestamps();
         });

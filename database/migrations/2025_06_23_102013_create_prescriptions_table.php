@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('prescriptions', function (Blueprint $table) {
             $table->id();
             $table->dateTime('date_prescription')->nullable();
-            $table->string('status')->nullable();
+            $table->enum('status', ['pending', 'confirmed', 'canceled'])->nullable();
             $table->text('notes')->nullable();
             $table->timestamps();
         });

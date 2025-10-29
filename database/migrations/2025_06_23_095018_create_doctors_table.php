@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('numero_ordre')->nullable();
             $table->text('biography')->nullable();
             $table->integer('experience')->nullable();
-            $table->string('status')->default('active')->nullable(); // active, inactive, suspended
+            $table->enum('status', ['active', 'inactive', 'suspended'])->default('active')->nullable();
             $table->string('numero_professionel')->unique()->nullable();
 
             $table->timestamps();

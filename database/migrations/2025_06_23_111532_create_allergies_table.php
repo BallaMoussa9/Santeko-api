@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('reaction_description')->nullable();
             $table->string('severity')->nullable();
             $table->string('recorded_by')->nullable();
-            $table->string('status')->nullable();
+            $table->enum('status', ['actif', 'inactif', 'résolu'])->nullable();
             $table->text('notes')->nullable();
             $table->timestamps();
         });

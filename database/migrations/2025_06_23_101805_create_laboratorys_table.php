@@ -19,7 +19,7 @@ return new class extends Migration
             $table->string('email')->nullable()->comment('Email address of the laboratory');
             $table->time('opening_time')->nullable()->comment('Opening time of the laboratory');
             $table->time('closing_time')->nullable()->comment('Closing time of the laboratory');
-            $table->string('status')->default('active')->nullable()->comment('Status of the laboratory (active, inactive)');
+            $table->enum('status', ['active', 'inactive'])->default('active')->nullable()->comment('Status of the laboratory (active, inactive)');
 
             $table->timestamps();
         });

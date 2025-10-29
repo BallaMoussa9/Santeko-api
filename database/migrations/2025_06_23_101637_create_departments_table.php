@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->string('name')->unique()->nullable();
             $table->string('description')->nullable();
-            $table->string('status')->nullable();
+            $table->enum('status', ['active', 'inactive'])->nullable();
             $table->string('position')->nullable();
             $table->timestamps();
         });

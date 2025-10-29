@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->string('speciality')->nullable();
             $table->string('qualification')->nullable();
-            $table->string('status')->default('active')->nullable();
+            $table->enum('status', ['active', 'inactive'])->default('active')->nullable();
 
             $table->timestamps();
         });
