@@ -5,11 +5,13 @@ WORKDIR /var/www
 # Installer les dépendances système
 RUN apt-get update && apt-get install -y \
     libpng-dev libonig-dev libxml2-dev zip unzip git curl \
-    libmysqlclient-dev \
+    # CORRECTION : Remplacement de libmysqlclient-dev par les paquets MariaDB pour Debian/PHP 8.2
+    libmariadb-dev libmariadb-dev-compat \
     && rm -rf /var/lib/apt/lists/*
 
 # Configurer et installer les extensions PHP
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    # Installation des extensions PHP MySQL (elles s'appuient sur les libs MariaDB installées ci-dessus)
     && docker-php-ext-install pdo_mysql mysqli mbstring exif pcntl bcmath gd
 
 # Installer Composer
