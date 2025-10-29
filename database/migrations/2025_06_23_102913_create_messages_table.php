@@ -16,11 +16,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Supprimer d'abord les contraintes étrangères si elles existent
+        // *** 1. DÉSACTIVER LES CONTRÔLES DE CLÉS ÉTRANGÈRES (Spécifique à MySQL) ***
+        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+
         Schema::table($this->tableName, function (Blueprint $table) {
-            // Vérifier et supprimer les contraintes étrangères
-            $this->dropForeignKeyIfExists($this->tableName, 'admin_id');
-            $this->dropForeignKeyIfExists($this->tableName, 'recever_id');
+
+            // Tenter de supprimer les clés étrangères (Laravel gère si elles existent ou non, mais DBAL est requis pour les vérifications avancées)
+            // Avec FOREIGN_KEY_CHECKS=0, cela ne devrait pas bloquer.
+            try {
+                 $table->dropForeign(['admin_id']);
+            } catch (\Exception $e) {} // Ignorer les erreurs si la FK n'existe pas
+
+            try {
+                 $table->dropForeign(['recever_id']);
+            } catch (\Exception $e) {} // Ignorer les erreurs si la FK n'existe pas
 
             // Supprimer les colonnes si elles existent
             $columnsToDrop = [
@@ -39,6 +48,9 @@ return new class extends Migration
                 }
             }
         });
+
+        // *** 2. RÉACTIVER LES CONTRÔLES DE CLÉS ÉTRANGÈRES ***
+        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
     }
 
     /**
@@ -46,6 +58,9 @@ return new class extends Migration
      */
     public function down(): void
     {
+        // *** 1. DÉSACTIVER LES CONTRÔLES DE CLÉS ÉTRANGÈRES (Spécifique à MySQL) ***
+        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+
         Schema::table($this->tableName, function (Blueprint $table) {
             // Recréer toutes les colonnes
             $table->unsignedBigInteger('admin_id')->nullable();
@@ -54,50 +69,16 @@ return new class extends Migration
             $table->string('priority')->nullable()->default('normal');
             $table->dateTime('start_time')->nullable();
             $table->dateTime('end_time')->nullable();
-
-            // Gérer la colonne status selon le SGBD
-            if (DB::getDriverName() === 'pgsql') {
-                // PostgreSQL: utiliser VARCHAR avec contrainte CHECK
-                $table->string('status')->default($this->defaultStatus);
-            } else {
-                // MySQL: utiliser enum
-                $table->enum('status', $this->statusValues)->default($this->defaultStatus);
-            }
+            $table->enum('status', $this->statusValues)->default($this->defaultStatus);
         });
-
-        // Ajouter la contrainte CHECK pour PostgreSQL APRÈS la création de la colonne
-        if (DB::getDriverName() === 'pgsql') {
-            $quotedValues = implode(', ', array_map(fn($v) => "'$v'", $this->statusValues));
-            $constraintName = "{$this->tableName}_status_check";
-
-            // Supprimer la contrainte si elle existe déjà
-            DB::statement("ALTER TABLE {$this->tableName} DROP CONSTRAINT IF EXISTS {$constraintName}");
-            // Ajouter la contrainte CHECK
-            DB::statement("ALTER TABLE {$this->tableName} ADD CONSTRAINT {$constraintName} CHECK (status IN ({$quotedValues}))");
-        }
 
         // Recréer les contraintes étrangères
         Schema::table($this->tableName, function (Blueprint $table) {
             $table->foreign('admin_id')->references('id')->on('users')->onDelete('set null');
             $table->foreign('recever_id')->references('id')->on('users')->onDelete('set null');
         });
-    }
 
-    /**
-     * Méthode utilitaire pour supprimer une contrainte étrangère si elle existe.
-     */
-    private function dropForeignKeyIfExists(string $table, string $column): void
-    {
-        $schema = DB::getDoctrineSchemaManager();
-        $tableDetails = $schema->listTableDetails($table);
-
-        foreach ($tableDetails->getForeignKeys() as $foreignKey) {
-            if (in_array($column, $foreignKey->getLocalColumns())) {
-                Schema::table($table, function (Blueprint $table) use ($foreignKey) {
-                    $table->dropForeign([$foreignKey->getName()]);
-                });
-                break;
-            }
-        }
+        // *** 2. RÉACTIVER LES CONTRÔLES DE CLÉS ÉTRANGÈRES ***
+        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
     }
 };
