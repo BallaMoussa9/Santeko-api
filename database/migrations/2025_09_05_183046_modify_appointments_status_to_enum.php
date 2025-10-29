@@ -2,87 +2,45 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
-        // 1. DÉFINITION DU TYPE ENUM POSTGRESQL
-        if (DB::getDriverName() === 'pgsql') {
-            // Créer le type ENUM si on est sur PostgreSQL
-            // La clause 'IF NOT EXISTS' est facultative mais prévient les erreurs
-            DB::statement("
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'appointment_status_type') THEN
-                        CREATE TYPE appointment_status_type AS ENUM ('pending', 'confirmed', 'canceled', 'rescheduled', 'completed');
-                    END IF;
-                END
-                $$;
-            ");
-        }
-
-        // Vérifier que la table appointments existe
-        if (!Schema::hasTable('appointments')) {
-            // Si la table n'existe pas, on ne peut pas la modifier/reconstruire.
+        // Si la table existe
+        if (!Schema::hasTable('allergies')) {
             return;
         }
 
-        // Récupérer la structure actuelle (méthode de la table temporaire conservée pour l'exemple)
-        $columns = Schema::getColumnListing('appointments');
-
-        // Créer une nouvelle table temporaire
-        Schema::create('appointments_temp', function (Blueprint $table) {
-            $table->id();
-            $table->unsignedBigInteger('patient_id')->nullable();
-            $table->unsignedBigInteger('doctor_id')->nullable();
-            $table->dateTime('date')->nullable();
-
-            if (DB::getDriverName() === 'pgsql') {
-                // Utiliser le type ENUM créé manuellement pour PostgreSQL
-                $table->addColumn('appointment_status_type', 'status')->default('pending');
-            } else {
-                // Utiliser la fonction enum() native de Laravel pour les autres DB (MySQL, etc.)
-                $table->enum('status', ['pending', 'confirmed', 'canceled', 'rescheduled', 'completed'])->default('pending');
-            }
-
-            $table->timestamps();
-        });
-
-        // Copier les données
-        $existingColumns = collect(['id', 'patient_id', 'doctor_id', 'date', 'status', 'created_at', 'updated_at'])
-            ->filter(fn($col) => in_array($col, $columns))
-            ->implode(', ');
-
-        if ($existingColumns) {
-            DB::statement("INSERT INTO appointments_temp ($existingColumns) SELECT $existingColumns FROM appointments");
+        // 🔹 Étape 1 : supprimer les contraintes CHECK existantes (si elles existent)
+        try {
+            DB::statement('ALTER TABLE allergies DROP CONSTRAINT IF EXISTS allergies_status_check');
+        } catch (\Throwable $e) {
+            // On ignore si la contrainte n’existe pas
         }
 
-        // Supprimer l'ancienne table
-        Schema::drop('appointments');
+        // 🔹 Étape 2 : modifier le type de colonne en VARCHAR
+        Schema::table('allergies', function (Blueprint $table) {
+            $table->string('status', 255)->nullable()->change();
+        });
 
-        // Renommer la nouvelle table
-        Schema::rename('appointments_temp', 'appointments');
+        // 🔹 Étape 3 : ajouter une contrainte ENUM manuellement (version PostgreSQL)
+        DB::statement("ALTER TABLE allergies ADD CONSTRAINT allergies_status_check CHECK (status IN ('actif', 'inactif', 'résolu'))");
+
+        // 🔹 Étape 4 : valeur par défaut
+        DB::statement("ALTER TABLE allergies ALTER COLUMN status SET DEFAULT 'actif'");
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        // Logique de 'down' pour revenir à une simple chaîne de caractères
-        Schema::table('appointments', function (Blueprint $table) {
-            $table->string('status', 255)->default('pending')->change();
+        Schema::table('allergies', function (Blueprint $table) {
+            $table->string('status')->nullable()->change();
         });
 
-        // Suppression du type ENUM PostgreSQL
-        if (DB::getDriverName() === 'pgsql') {
-            DB::statement('DROP TYPE IF EXISTS appointment_status_type;');
-        }
+        try {
+            DB::statement('ALTER TABLE allergies DROP CONSTRAINT IF EXISTS allergies_status_check');
+        } catch (\Throwable $e) {}
     }
 };
