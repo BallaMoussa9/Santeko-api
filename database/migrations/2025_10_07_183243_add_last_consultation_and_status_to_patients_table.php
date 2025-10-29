@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::table('patients', function (Blueprint $table) {
             // 1. last_consultation_date (Date de dernière consultation)
-            $table->date('last_consultation_date')->nullable()->after('taille');
+            //$table->date('last_consultation_date')->nullable()->after('taille');
 
             // 2. status (Statut du patient : ENUM)
             // L'énumération garantit que seules ces valeurs sont acceptées.
