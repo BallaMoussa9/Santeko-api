@@ -20,8 +20,7 @@ RUN composer install --no-dev --optimize-autoloader
 # Donner les bons droits à Laravel
 RUN chown -R www-data:www-data storage bootstrap/cache
 
-# Générer la clé Laravel
-RUN php artisan key:generate --force
+
 
 # Exposer le port PHP-FPM
 EXPOSE 9000
