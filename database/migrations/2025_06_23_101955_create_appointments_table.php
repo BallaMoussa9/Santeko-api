@@ -17,7 +17,7 @@ return new class extends Migration
             $table->dateTime('appointment_time')->nullable();
             $table->string('type')->nullable();
             $table->string('motif')->nullable();
-            $table->string('status')->nullable();
+            $table->enum('status', ['pending', 'confirmed', 'canceled', 'rescheduled', 'completed'])->nullable();
             $table->string('cancellation_reason')->nullable();
             $table->dateTime('confirmed_at')->nullable();
             $table->dateTime('completed_at')->nullable();
