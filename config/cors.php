@@ -16,7 +16,7 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['https://ton-front.vercel.app'], // front Vue/Vite
+    'allowed_origins' => ['http://localhost:5173', 'http://localhost:8100', 'https://frontend-ruddy-iota-49.vercel.app'], // front Vue/Vite
 
     'allowed_origins_patterns' => [],
 
