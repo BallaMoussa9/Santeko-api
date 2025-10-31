@@ -272,7 +272,7 @@ class UserController extends Controller
             return response()->json(['message' => 'Accès non autorisé.'], 403);
         }
 
-        // 2. Validation de l'entrée : Assure que le rôle est requis, de type string et existe dans la table 'roles'.
+        // 2. Validation de l'entrée.
         $validator = Validator::make($request->all(), [
             'role' => ['required', 'string', Rule::exists('roles', 'name')],
         ]);
@@ -285,19 +285,38 @@ class UserController extends Controller
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
 
-        DB::beginTransaction(); // Démarre une transaction pour garantir l'atomicité de l'opération
+        DB::beginTransaction(); // Démarre une transaction
         try {
             // 3. Trouver le rôle par son nom.
-            //    firstOrFail() lèvera une ModelNotFoundException si le rôle n'existe pas,
-            //    mais la validation Rule::exists() devrait déjà avoir empêché cela.
             $newRole = Role::where('name', $request->input('role'))->firstOrFail();
 
-            // 4. Récupérer les rôles actuels de l'utilisateur pour le log (avant le changement).
+            // 4. Récupérer les rôles actuels de l'utilisateur pour le log.
             $currentRoleNames = $user->roles->pluck('name')->implode(', ');
 
-            // 5. Synchroniser les rôles de l'utilisateur :
-            //    Détache tous les rôles actuels et attache uniquement le nouveau rôle.
+            // 5. Synchroniser les rôles de l'utilisateur.
             $user->roles()->sync([$newRole->id]);
+
+            // =========================================================================
+            // 💡 NOUVELLE LOGIQUE : SYNCHRONISATION DU PROFIL ADMIN (VOTRE REQUÊTE)
+            // =========================================================================
+            if ($newRole->name === 'admin') {
+                // L'utilisateur est promu admin. Créer ou garantir l'existence de l'entrée dans la table 'admins'.
+                // La clé de recherche est 'user_id', qui doit être l'ID de l'utilisateur.
+                Admin::firstOrCreate(
+                    ['user_id' => $user->id], // Critère de recherche
+                    ['department_id' => null]  // Valeurs par défaut si la création est nécessaire
+                );
+                Log::info("Profil Admin créé/mis à jour pour l'utilisateur {$user->id}.");
+
+            } else {
+                // L'utilisateur n'est PAS admin. Supprimer l'entrée de la table 'admins' s'elle existe.
+                // Ceci est crucial pour éviter les entrées orphelines.
+                Admin::where('user_id', $user->id)->delete();
+                Log::info("Profil Admin supprimé pour l'utilisateur {$user->id}.");
+            }
+            // =========================================================================
+            // ⬆️ FIN DE LA LOGIQUE DE SYNCHRONISATION
+            // =========================================================================
 
             // 6. Commettre la transaction si toutes les opérations sont réussies.
             DB::commit();
@@ -310,26 +329,22 @@ class UserController extends Controller
                 'requested_by_admin' => Auth::id(),
             ]);
 
-            // 8. Retourner une réponse JSON avec l'utilisateur mis à jour (incluant ses nouveaux rôles).
+            // 8. Retourner une réponse JSON.
             return response()->json([
                 'message' => "Rôle de l'utilisateur mis à jour avec succès.",
-                'user' => $user->load('roles') // Recharge l'utilisateur et sa relation 'roles' pour la réponse
+                'user' => $user->load('roles')
             ]);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            DB::rollBack(); // Annule la transaction si le modèle (rôle) n'est pas trouvé
-            Log::error("Le rôle demandé '{$request->input('role')}' n'a pas été trouvé lors de la mise à jour de l'utilisateur {$user->id}.", [
-                'user_id' => $user->id,
-                'requested_role' => $request->input('role'),
-                'exception_file' => $e->getFile(),
-                'exception_line' => $e->getLine(),
-            ]);
+            DB::rollBack();
+            // ... (Gestion des erreurs existante)
             return response()->json([
                 'message' => "Le rôle spécifié n'existe pas.",
                 'error' => $e->getMessage()
-            ], 404); // Code 404 car la ressource (le rôle) n'a pas été trouvée
+            ], 404);
         } catch (\Exception $e) {
-            DB::rollBack(); // Annule la transaction pour toute autre exception
+            DB::rollBack();
+            // ... (Gestion des erreurs existante)
             Log::error("Erreur inattendue lors de la mise à jour du rôle de l'utilisateur {$user->id} : " . $e->getMessage(), [
                 'user_id' => $user->id,
                 'requested_role' => $request->input('role'),
@@ -343,7 +358,6 @@ class UserController extends Controller
             ], 500);
         }
     }
-
 // ...
 
     //-----------------------------------------------------------------------------------------------------------------------------------------------------------------

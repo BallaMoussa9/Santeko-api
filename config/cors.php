@@ -7,16 +7,21 @@ return [
     | Cross-Origin Resource Sharing (CORS) Configuration
     |--------------------------------------------------------------------------
     |
-    | Ici on autorise le front Vite (http://localhost:5173) à communiquer avec
-    | ton API Laravel (http://localhost). Ça résout ton problème de CORS.
+    | Ici on autorise le front Vite (http://localhost:5173), l'app mobile
+    | (http://localhost:8100) et le front Vercel à communiquer avec l'API Laravel.
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie'], // pas besoin de login/logout ici
+    'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['http://localhost:5173', 'http://localhost:8100', 'https://frontend-ruddy-iota-49.vercel.app'], // front Vue/Vite
+    'allowed_origins' => [
+        'http://localhost:5173',   // Front Vite
+        'http://localhost:8100',   // App mobile Ionic
+        'http://localhost',        // si nécessaire pour tests
+        'https://frontend-ruddy-iota-49.vercel.app', // Front Vercel
+    ],
 
     'allowed_origins_patterns' => [],
 
@@ -27,4 +32,5 @@ return [
     'max_age' => 0,
 
     'supports_credentials' => true, // nécessaire si tu utilises Sanctum
+
 ];

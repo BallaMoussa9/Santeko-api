@@ -16,16 +16,9 @@ class Admin extends Model
     use HasFactory;
 
     protected $fillable = [
-        'admin_id', // ✅ Ajoutez ceci
-        'key',
-        'value',
-        'description',
-        'type',
-        'category',
-        'status',
-        'is_editable',
-        'is_visible',
-        'is_required',
+        // La table admins n'a que ces colonnes (selon votre capture)
+        'department_id',
+        'user_id',
     ];
 
     // Vous pouvez aussi définir les casts pour les booléens

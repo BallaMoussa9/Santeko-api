@@ -30,36 +30,55 @@ class DepartmentController extends Controller
      * Store a newly created resource in storage.
      * Accessible uniquement aux administrateurs.
      */
- public function store(DepartmentRequest $request): JsonResponse
+public function store(DepartmentRequest $request): JsonResponse
 {
-    // Vérification du rôle de l'utilisateur
-    // On suppose que Auth::user() renvoie un modèle User qui a la relation de rôle
-    if (!Auth::check() || !Auth::user()->hasRole('admin')) {
-        $userId = Auth::check() ? Auth::user()->id : 'non connecté';
+    // 1. Vérification du rôle de l'utilisateur
+    $user = Auth::user();
+    if (!$user || !$user->hasRole('admin')) {
+        $userId = $user ? $user->id : 'non connecté';
         return response()->json([
             'message' => "Accès non autorisé : L'utilisateur avec l'ID {$userId} n'a pas le rôle d'administrateur."
         ], 403);
     }
 
-    // Récupérer les données validées de la requête (qui incluent déjà doctor_id si fourni)
+    // 2. Récupérer l'ID du profil Admin de l'utilisateur
+    // Nous utilisons la relation 'admin()' définie dans votre modèle User
+    $adminProfile = $user->admin()->first();
+
+    if (!$adminProfile) {
+        // Cette erreur ne devrait pas se produire si la synchronisation des rôles est correcte,
+        // mais elle est cruciale en cas de désynchronisation.
+        return response()->json([
+            'message' => "Erreur de synchronisation : L'utilisateur est admin mais n'a pas d'entrée de profil dans la table 'admins'."
+        ], 500);
+    }
+
+    // L'ID dont la table `departments` a besoin est l'ID de la table `admins` (la clé primaire de Admin)
+    $admin_fk_id = $adminProfile->id;
+
+    // 3. Récupérer les données validées
     $validatedData = $request->validated();
 
-    // ✅ Ajouter l'ID de l'administrateur connecté au tableau des données validées
-    // C'est l'ID de l'utilisateur dans la table 'users'
-    $validatedData['admin_id'] = Auth::id();
+    // 4. INJECTION DE LA CLÉ ÉTRANGÈRE CORRECTE
+    // On utilise l'ID du profil Admin, qui est la clé primaire de la table `admins`.
+    $validatedData['admin_id'] = $admin_fk_id;
 
-    // ✅ Le 'doctor_id' est déjà dans $validatedData grâce à la DepartmentRequest.
-    // Pas besoin de l'ajouter explicitement ici, sauf si vous voulez le modifier.
-    // Par exemple, si vous vouliez forcer doctor_id à null s'il n'est pas admin, mais ce n'est pas le cas ici.
+    // 5. Création du département
+    try {
+        $department = Department::create($validatedData);
 
-    $department = Department::create($validatedData);
-
-    return response()->json([
-        'message' => 'Département créé avec succès.',
-        'data' => $department
-    ], 201);
+        return response()->json([
+            'message' => 'Département créé avec succès.',
+            'data' => $department
+        ], 201);
+    } catch (\Exception $e) {
+        // En cas d'autre erreur SQL (comme le doctor_id qui n'existe pas)
+        return response()->json([
+            'message' => 'Échec de la création du département. Détails : ' . $e->getMessage(),
+            'error' => $e->getMessage()
+        ], 500);
+    }
 }
-
     /**
      * Display the specified resource.
      * Accessible à tous les utilisateurs.
