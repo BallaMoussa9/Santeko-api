@@ -94,12 +94,46 @@ class AppointmentRequest extends FormRequest
      * Cette méthode est utilisée pour des validations plus complexes qui dépendent
      * du contexte de l'utilisateur ou d'autres paramètres non couverts par les règles simples.
      */
-   public function after(): array
-{
-    return [
+    public function after(): array
+    {
+        return [
+            function ($validator) {
+                $user = $this->user(); // L'utilisateur authentifié
+                $routePatientId = (int) $this->route('patientId'); // L'ID patient extrait de l'URL
 
-    ];
-}
+                // --- Validation 1: Le patientId de l'URL doit exister ---
+                // C'est une vérification fondamentale pour s'assurer que la ressource patient est valide.
+                if (!Patient::find($routePatientId)) {
+                    $validator->errors()->add('patientId', 'Le patient spécifié dans l\'URL est introuvable.');
+                    return; // Arrêter d'autres validations si le patient de la route est invalide
+                }
+
+                // --- Validation 2: Logique de permission basée sur le rôle ---
+                if ($user->hasRole('patient')) {
+                    // Si l'utilisateur est un patient:
+                    // Il ne peut prendre rendez-vous que pour lui-même.
+                    // 1. Vérifie si le patient authentifié existe et si son ID correspond à celui de la route.
+                    if (!isset($user->patient) || $routePatientId !== $user->patient->id) {
+                        $validator->errors()->add('patient_id', 'Les patients ne peuvent prendre rendez-vous que pour eux-mêmes.');
+                    }
+                    // 2. Si le patient tente d'envoyer un 'patient_id' dans le corps de la requête,
+                    //    il doit correspondre à son propre ID pour éviter les tentatives de falsification.
+                    if ($this->has('patient_id') && $this->input('patient_id') !== $user->patient->id) {
+                        $validator->errors()->add('patient_id', 'Le patient spécifié dans la requête ne correspond pas à votre profil.');
+                    }
+                }
+                // --- Validation 3: Pour les autres rôles (Doctor, Admin, Nurse) ---
+                // Si ces rôles envoient un 'patient_id' dans le corps de la requête,
+                // il doit correspondre au 'patientId' extrait de l'URL pour la cohérence.
+                else {
+                    if ($this->has('patient_id') && $this->input('patient_id') !== $routePatientId) {
+                        $validator->errors()->add('patient_id', 'Le patient spécifié dans la requête ne correspond pas à celui de l\'URL.');
+                    }
+                }
+            }
+        ];
+    }
+
     /**
      * Définir des messages d'erreur personnalisés si nécessaire.
      */
