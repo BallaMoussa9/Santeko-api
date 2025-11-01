@@ -87,7 +87,7 @@ public function store(AppointmentRequest $request, string $patientId): JsonRespo
     $user = auth()->user();
     $data = $request->validated();
 
-    // Logs Initiaux (qui fonctionnent selon votre rapport)
+    // Logs Initiaux
     Log::info('AppointmentController@store - Données validées:', $data);
     Log::info('AppointmentController@store - Utilisateur authentifié:', [
         'id' => $user->id,
@@ -95,34 +95,44 @@ public function store(AppointmentRequest $request, string $patientId): JsonRespo
     ]);
     Log::info('AppointmentController@store - ID Patient de la route:', ['id' => $patientId]);
 
-    // ... (Logique de validation de Patient::find($routePatientId) qui est correcte) ...
-
     // --- Gestion des Permissions par rôle ---
     if ($user->hasRole('patient')) {
-        // Logique de patient (correcte)
-        // ...
+        // Logique de patient
         $data['patient_id'] = $user->patient->id;
-        $data['status'] = $data['status'] ?? 'pending'; // Changed to 'pending' as discussed
+        $data['status'] = $data['status'] ?? 'pending';
         Log::info('Permission Check: OK. User is Patient booking for themselves.', ['final_patient_id' => $data['patient_id'], 'status' => $data['status']]);
 
     } elseif ($user->hasRole('doctor')) {
-        // Logique de docteur (correcte)
-        // ...
+        // Logique de docteur - CORRECTION : utiliser $patientId au lieu de $routePatientId
         $data['doctor_id'] = $user->doctor->id;
-        $data['patient_id'] = $routePatientId;
+        $data['patient_id'] = $patientId; // 🔥 CORRECTION ICI
         $data['status'] = $data['status'] ?? 'scheduled';
         Log::info('Permission Check: OK. User is Doctor booking for patient.', ['final_patient_id' => $data['patient_id'], 'status' => $data['status']]);
 
     } elseif ($user->hasRole('nurse') || $user->hasRole('admin')) {
-        // Logique Admin/Infirmière (correcte)
-        $data['patient_id'] = $routePatientId;
+        // Logique Admin/Infirmière - CORRECTION : utiliser $patientId au lieu de $routePatientId
+        $data['patient_id'] = $patientId; // 🔥 CORRECTION ICI
         $data['status'] = $data['status'] ?? 'scheduled';
         Log::info('Permission Check: OK. User is Admin/Nurse booking for patient.', ['final_patient_id' => $data['patient_id'], 'status' => $data['status']]);
 
     } else {
-        // Logique de refus (qui fonctionnerait si l'utilisateur n'avait pas de rôle)
+        // Logique de refus
         Log::error('Unauthorized access to AppointmentController@store.', ['user_id' => $user->id, 'roles' => $user->roles->pluck('name')->toArray()]);
         return response()->json(['message' => 'Accès non autorisé à cette action.'], 403);
+    }
+
+    // Vérification que le patient existe
+    $patient = Patient::find($data['patient_id']);
+    if (!$patient) {
+        Log::error('Patient not found for appointment creation.', ['patient_id' => $data['patient_id']]);
+        return response()->json(['message' => 'Patient non trouvé.'], 404);
+    }
+
+    // Vérification que le docteur existe
+    $doctor = Doctor::find($data['doctor_id']);
+    if (!$doctor) {
+        Log::error('Doctor not found for appointment creation.', ['doctor_id' => $data['doctor_id']]);
+        return response()->json(['message' => 'Docteur non trouvé.'], 404);
     }
 
     // --- Vérification de la Disponibilité du créneau ---
@@ -146,18 +156,16 @@ public function store(AppointmentRequest $request, string $patientId): JsonRespo
         $appointment = Appointment::create($data);
         Log::info('APPOINTMENT CREATED SUCCESSFULLY.', ['appointment_id' => $appointment->id]);
     } catch (\Exception $e) {
-        // 🚨 SÉCURITÉ : Capturez une erreur lors de l'insertion dans la DB
         Log::error('DB INSERTION FAILED:', ['error' => $e->getMessage(), 'data' => $data]);
         return response()->json(['message' => 'Erreur interne: Échec de l\'enregistrement du rendez-vous.'], 500);
     }
 
-    // --- Notifications et Événement (Le reste du code fonctionne après la création) ---
-    // ...
+    // --- Notifications et Événement ---
+    // ... (votre code de notifications ici)
 
     Log::info('AppointmentController@store - Final Response Sent.', ['appointment_id' => $appointment->id]);
     return response()->json(['appointment' => $appointment], 201);
 }
-
     /**
      * Display the specified resource.
      * Les patients et docteurs peuvent voir leurs rendez-vous respectifs. Les admins voient tout.
