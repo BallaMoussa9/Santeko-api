@@ -26,51 +26,47 @@ class AppointmentController extends Controller
 {
     $user = auth()->user();
 
-    if ($user->hasRole('admin')) {
-        // CORRECTION ADMIN : L'Admin a besoin du User lié au Patient et du User lié au Docteur.
-        $appointments = Appointment::with([
-            'patient.user', // Charger l'utilisateur du patient
-            'doctor.user'   // Charger l'utilisateur du docteur
-        ])->get();
+    try {
+        $query = Appointment::query();
 
-    } elseif ($user->hasRole('patient')) {
-        // Ce bloc était déjà presque correct, mais clarifions la relation du Patient
-        $patient = Patient::where('user_id', $user->id)->first();
+        // 🧩 Appliquer les restrictions selon le rôle
+        if ($user->hasRole('patient')) {
+            $patient = Patient::where('user_id', $user->id)->first();
+            if (!$patient) {
+                return response()->json(['message' => 'Patient non trouvé'], 404);
+            }
+            $query->where('patient_id', $patient->id);
 
-        if (!$patient) {
-            return response()->json(['message' => 'Patient non trouvé pour cet utilisateur.'], 404);
+        } elseif ($user->hasRole('doctor')) {
+            $doctor = Doctor::where('user_id', $user->id)->first();
+            if (!$doctor) {
+                return response()->json(['message' => 'Docteur non trouvé'], 404);
+            }
+            $query->where('doctor_id', $doctor->id);
+
+        } elseif (!$user->hasRole('admin')) {
+            return response()->json(['message' => 'Accès non autorisé'], 403);
         }
 
-        // CORRECTION PATIENT : Charger le user du doctor. La relation patient est implicite.
-        $appointments = Appointment::with(['doctor.user'])
-                                   ->where('patient_id', $patient->id)
-                                   ->get();
+        // 🗓️ ❌ Suppression du filtre sur la date et l'heure
+        // On récupère simplement tous les rendez-vous liés à l'utilisateur
+        $appointments = $query
+            ->with(['patient.user', 'doctor.user'])
+            ->orderBy('appointment_date', 'desc')
+            ->orderBy('appointment_time', 'desc')
+            ->get();
 
-    } elseif ($user->hasRole('doctor')) {
-        // Rendez-vous pour le docteur connecté
-        $doctor = $user->doctor;
+        return response()->json([
+            'message' => 'Tous les rendez-vous récupérés avec succès',
+            'data' => $appointments,
+        ]);
 
-        if (!$doctor) {
-            return response()->json(['message' => 'Docteur non trouvé pour cet utilisateur.'], 404);
-        }
-
-        // CORRECTION DOCTOR : Charger le user du patient pour afficher son nom.
-        // Le doctor est implicitement lié par le filtre where('doctor_id', ...).
-        $appointments = Appointment::with(['patient.user'])
-                                   ->where('doctor_id', $doctor->id)
-                                   ->get();
-    } else {
-        return response()->json(['message' => 'Accès non autorisé.'], 403);
+    } catch (\Exception $e) {
+        Log::error('Erreur lors de la récupération des rendez-vous :', ['error' => $e->getMessage()]);
+        return response()->json(['message' => 'Erreur serveur'], 500);
     }
-
-    // Assurez-vous que l'objet $appointments est toujours une Collection
-    $appointmentsArray = $appointments instanceof \Illuminate\Support\Collection ? $appointments->toArray() : [];
-
-    return response()->json([
-        'message' => 'Liste des rendez-vous récupérée avec succès.',
-        'data' => $appointmentsArray,
-    ]);
 }
+
 
     /**
      * Store a newly created resource in storage.
