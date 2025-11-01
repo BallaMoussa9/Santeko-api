@@ -3,17 +3,15 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use App\Models\Patient;
-use App\Models\User;
 
 /**
  * @mixin IdeHelperSOSAlert
  */
 class SOSAlert extends Model
 {
-    // Indique à Laravel que le nom de la table est 'sosalerts' et non 's_o_s_alerts'
     protected $table = 'sosalerts';
-      protected $fillable = [
+
+    protected $fillable = [
         'patient_id',
         'status',
         'type',
@@ -29,11 +27,22 @@ class SOSAlert extends Model
         'initiated_at' => 'datetime',
     ];
 
-    public function patients(){
-        return $this->belongsTo(Patient::class);
-    }
-    public  function user(){
-        return $this->hasOneThrough(User::class,Patient::class,'id','id','patient_id','user_id');
+    // 🔥 CORRECTION : Relation au singulier avec clé étrangère explicite
+    public function patient()
+    {
+        return $this->belongsTo(Patient::class, 'patient_id');
     }
 
+    // 🔥 CORRECTION : Relation user simplifiée
+    public function user()
+    {
+        return $this->hasOneThrough(
+            User::class,
+            Patient::class,
+            'id',          // Clé sur patients
+            'id',          // Clé sur users
+            'patient_id',  // Clé locale sur sosalerts
+            'user_id'      // Clé sur patients qui référence users
+        );
+    }
 }
