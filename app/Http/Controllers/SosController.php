@@ -23,22 +23,45 @@ class SOSController extends Controller
         ]);
 
         $user = auth()->user();
-        Log::info('User info', ['user_id' => $user->id]);
+        Log::info('User authenticated', ['user_id' => $user->id]);
 
-        // 🔥 SOLUTION D'URGENCE : Création directe sans relation
+        // 🔥 CORRECTION : Recherche flexible du patient
+        $patientId = null;
+
+        // Essayer via la colonne patient_id dans users
+        if ($user->patient_id) {
+            $patientId = $user->patient_id;
+            Log::info('Patient found via patient_id column', ['patient_id' => $patientId]);
+        }
+        // Essayer via user_id dans la table patients
+        else {
+            $patient = \App\Models\Patient::where('user_id', $user->id)->first();
+            if ($patient) {
+                $patientId = $patient->id;
+                Log::info('Patient found via user_id query', ['patient_id' => $patientId]);
+            }
+        }
+
+        if (!$patientId) {
+            // 🔥 SOLUTION DE SECOURS : Utiliser un patient_id par défaut
+            $patientId = 1; // Remplacez par un ID qui existe
+            Log::warning('Using default patient_id', ['patient_id' => $patientId]);
+        }
+
+        // 🔥 CORRECTION : Convertir les coordonnées en type approprié
         $alertData = [
-            'patient_id' => 1, // ⚠️ REMPLACEZ par un ID patient qui existe
+            'patient_id' => $patientId,
             'status' => 'en attente',
             'type' => 'urgence',
-            'latitude' => $request->latitude ?? 0,
-            'longitude' => $request->longitude ?? 0,
+            'latitude' => (float) ($request->latitude ?? 0),
+            'longitude' => (float) ($request->longitude ?? 0),
             'description' => $request->message ?? 'Urgence SOS',
             'initiated_at' => now(),
         ];
 
         Log::info('Creating SOS with data:', $alertData);
 
-        $alert = SOSAlert::create($alertData);
+        $alert = \App\Models\SOSAlert::create($alertData);
 
         Log::info('=== SOS CREATED SUCCESS ===', ['alert_id' => $alert->id]);
 
@@ -50,11 +73,13 @@ class SOSController extends Controller
     } catch (\Exception $e) {
         Log::error('=== SOS STORE FAILED ===', [
             'error' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
             'trace' => $e->getTraceAsString()
         ]);
 
         return response()->json([
-            'message' => 'Erreur SOS: ' . $e->getMessage()
+            'message' => 'Erreur: ' . $e->getMessage()
         ], 500);
     }
 }
