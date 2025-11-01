@@ -85,7 +85,6 @@ class AppointmentController extends Controller
 public function store(Request $request, string $patientId): JsonResponse
 {
     try {
-        // VALIDATION MANUELLE TEMPORAIRE
         $data = $request->validate([
             'doctor_id' => 'required|exists:doctors,id',
             'appointment_date' => 'required|date',
@@ -96,13 +95,16 @@ public function store(Request $request, string $patientId): JsonResponse
 
         $user = auth()->user();
 
-        Log::info('=== STORE METHOD REACHED ===');
-        Log::info('User:', ['id' => $user->id]);
-        Log::info('Data:', $data);
+        // 🔥 CORRECTION : Formater le temps correctement
+        $time = $data['appointment_time'];
+        if (strlen($time) === 5) { // Format "HH:MM"
+            $data['appointment_time'] = $time . ':00'; // Devient "HH:MM:00"
+        }
 
-        // LOGIQUE SIMPLIFIÉE
         $data['patient_id'] = $patientId;
         $data['status'] = 'pending';
+
+        Log::info('Final data before creation:', $data);
 
         $appointment = Appointment::create($data);
 
