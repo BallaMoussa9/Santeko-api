@@ -81,7 +81,6 @@ class AppointmentController extends Controller
 
 // ... imports ...
 // ...
-
 public function store(AppointmentRequest $request, string $patientId): JsonResponse
 {
     try {
