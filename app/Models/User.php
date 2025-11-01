@@ -95,7 +95,7 @@ class User extends Authenticatable
     // Relations One-to-One (Un utilisateur EST un patient, un docteur, etc.)
     public function patient(): HasOne
     {
-        return $this->hasOne(Patient::class);
+    return $this->hasOne(Patient::class, 'user_id');
     }
 
     public function doctor(): HasOne
