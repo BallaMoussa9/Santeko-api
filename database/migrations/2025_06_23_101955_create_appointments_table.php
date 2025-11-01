@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('appointments', function (Blueprint $table) {
             $table->id();
             $table->dateTime('appointment_date')->nullable();
-            $table->dateTime('appointment_time')->nullable();
+            $table->string('appointment_time')->nullable();
             $table->string('type')->nullable();
             $table->string('motif')->nullable();
             $table->enum('status', ['pending', 'confirmed', 'canceled', 'rescheduled', 'completed'])->nullable();
