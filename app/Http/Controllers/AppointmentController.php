@@ -84,87 +84,123 @@ class AppointmentController extends Controller
 
 public function store(AppointmentRequest $request, string $patientId): JsonResponse
 {
-    $user = auth()->user();
-    $data = $request->validated();
-
-    // Logs Initiaux
-    Log::info('AppointmentController@store - Données validées:', $data);
-    Log::info('AppointmentController@store - Utilisateur authentifié:', [
-        'id' => $user->id,
-        'role' => $user->roles->pluck('name')->first() ?? 'N/A'
-    ]);
-    Log::info('AppointmentController@store - ID Patient de la route:', ['id' => $patientId]);
-
-    // --- Gestion des Permissions par rôle ---
-    if ($user->hasRole('patient')) {
-        // Logique de patient
-        $data['patient_id'] = $user->patient->id;
-        $data['status'] = $data['status'] ?? 'pending';
-        Log::info('Permission Check: OK. User is Patient booking for themselves.', ['final_patient_id' => $data['patient_id'], 'status' => $data['status']]);
-
-    } elseif ($user->hasRole('doctor')) {
-        // Logique de docteur - CORRECTION : utiliser $patientId au lieu de $routePatientId
-        $data['doctor_id'] = $user->doctor->id;
-        $data['patient_id'] = $patientId; // 🔥 CORRECTION ICI
-        $data['status'] = $data['status'] ?? 'scheduled';
-        Log::info('Permission Check: OK. User is Doctor booking for patient.', ['final_patient_id' => $data['patient_id'], 'status' => $data['status']]);
-
-    } elseif ($user->hasRole('nurse') || $user->hasRole('admin')) {
-        // Logique Admin/Infirmière - CORRECTION : utiliser $patientId au lieu de $routePatientId
-        $data['patient_id'] = $patientId; // 🔥 CORRECTION ICI
-        $data['status'] = $data['status'] ?? 'scheduled';
-        Log::info('Permission Check: OK. User is Admin/Nurse booking for patient.', ['final_patient_id' => $data['patient_id'], 'status' => $data['status']]);
-
-    } else {
-        // Logique de refus
-        Log::error('Unauthorized access to AppointmentController@store.', ['user_id' => $user->id, 'roles' => $user->roles->pluck('name')->toArray()]);
-        return response()->json(['message' => 'Accès non autorisé à cette action.'], 403);
-    }
-
-    // Vérification que le patient existe
-    $patient = Patient::find($data['patient_id']);
-    if (!$patient) {
-        Log::error('Patient not found for appointment creation.', ['patient_id' => $data['patient_id']]);
-        return response()->json(['message' => 'Patient non trouvé.'], 404);
-    }
-
-    // Vérification que le docteur existe
-    $doctor = Doctor::find($data['doctor_id']);
-    if (!$doctor) {
-        Log::error('Doctor not found for appointment creation.', ['doctor_id' => $data['doctor_id']]);
-        return response()->json(['message' => 'Docteur non trouvé.'], 404);
-    }
-
-    // --- Vérification de la Disponibilité du créneau ---
-    $isAvailable = Appointment::where('doctor_id', $data['doctor_id'])
-        ->where('appointment_date', $data['appointment_date'])
-        ->where('appointment_time', $data['appointment_time'])
-        ->whereIn('status', ['scheduled', 'confirmed', 'pending'])
-        ->doesntExist();
-
-    Log::info('Disponibility Check:', ['is_available' => $isAvailable, 'doctor_id' => $data['doctor_id']]);
-
-    if (!$isAvailable) {
-        Log::warning('Appointment time slot not available.', ['doctor_id' => $data['doctor_id'], 'date' => $data['appointment_date'], 'time' => $data['appointment_time']]);
-        throw ValidationException::withMessages([
-            'appointment_time' => 'Ce créneau horaire est déjà pris ou en attente pour ce docteur.'
-        ]);
-    }
-
-    // --- Création du rendez-vous ---
     try {
+        $user = auth()->user();
+        $data = $request->validated();
+
+        Log::info('=== DÉBUT AppointmentController@store ===');
+        Log::info('User:', ['id' => $user->id, 'role' => $user->roles->pluck('name')->first() ?? 'N/A']);
+        Log::info('Patient ID from route:', ['patient_id' => $patientId]);
+        Log::info('Request data:', $data);
+
+        // Vérification basique de l'utilisateur
+        if (!$user) {
+            Log::error('User not authenticated');
+            return response()->json(['message' => 'Utilisateur non authentifié.'], 401);
+        }
+
+        // --- Gestion des Permissions par rôle ---
+        if ($user->hasRole('patient')) {
+            Log::info('Role: Patient detected');
+            if (!$user->patient) {
+                Log::error('Patient profile not found for user', ['user_id' => $user->id]);
+                return response()->json(['message' => 'Profil patient non trouvé.'], 404);
+            }
+            $data['patient_id'] = $user->patient->id;
+            $data['status'] = $data['status'] ?? 'pending';
+
+        } elseif ($user->hasRole('doctor')) {
+            Log::info('Role: Doctor detected');
+            if (!$user->doctor) {
+                Log::error('Doctor profile not found for user', ['user_id' => $user->id]);
+                return response()->json(['message' => 'Profil docteur non trouvé.'], 404);
+            }
+            $data['doctor_id'] = $user->doctor->id;
+            $data['patient_id'] = $patientId;
+            $data['status'] = $data['status'] ?? 'scheduled';
+
+        } elseif ($user->hasRole('nurse') || $user->hasRole('admin')) {
+            Log::info('Role: Admin/Nurse detected');
+            $data['patient_id'] = $patientId;
+            $data['status'] = $data['status'] ?? 'scheduled';
+
+        } else {
+            Log::error('Unauthorized role', ['user_roles' => $user->roles->pluck('name')->toArray()]);
+            return response()->json(['message' => 'Accès non autorisé à cette action.'], 403);
+        }
+
+        Log::info('Final appointment data before validation:', $data);
+
+        // Vérification que le patient existe
+        $patient = Patient::find($data['patient_id']);
+        if (!$patient) {
+            Log::error('Patient not found in database', ['patient_id' => $data['patient_id']]);
+            return response()->json(['message' => 'Patient non trouvé dans la base de données.'], 404);
+        }
+
+        // Vérification que le docteur existe
+        if (!isset($data['doctor_id'])) {
+            Log::error('Doctor ID missing in request');
+            return response()->json(['message' => 'ID docteur manquant.'], 400);
+        }
+
+        $doctor = Doctor::find($data['doctor_id']);
+        if (!$doctor) {
+            Log::error('Doctor not found in database', ['doctor_id' => $data['doctor_id']]);
+            return response()->json(['message' => 'Docteur non trouvé dans la base de données.'], 404);
+        }
+
+        // --- Vérification de la Disponibilité du créneau ---
+        Log::info('Checking availability for doctor:', ['doctor_id' => $data['doctor_id']]);
+
+        $isAvailable = Appointment::where('doctor_id', $data['doctor_id'])
+            ->where('appointment_date', $data['appointment_date'])
+            ->where('appointment_time', $data['appointment_time'])
+            ->whereIn('status', ['scheduled', 'confirmed', 'pending'])
+            ->doesntExist();
+
+        Log::info('Availability check result:', ['is_available' => $isAvailable]);
+
+        if (!$isAvailable) {
+            Log::warning('Time slot not available', [
+                'doctor_id' => $data['doctor_id'],
+                'date' => $data['appointment_date'],
+                'time' => $data['appointment_time']
+            ]);
+            return response()->json([
+                'message' => 'Ce créneau horaire est déjà pris ou en attente pour ce docteur.'
+            ], 409);
+        }
+
+        // --- Création du rendez-vous ---
+        Log::info('Attempting to create appointment...');
+
         $appointment = Appointment::create($data);
-        Log::info('APPOINTMENT CREATED SUCCESSFULLY.', ['appointment_id' => $appointment->id]);
+
+        Log::info('=== APPOINTMENT CREATED SUCCESSFULLY ===', [
+            'appointment_id' => $appointment->id,
+            'patient_id' => $appointment->patient_id,
+            'doctor_id' => $appointment->doctor_id
+        ]);
+
+        return response()->json([
+            'message' => 'Rendez-vous créé avec succès.',
+            'appointment' => $appointment
+        ], 201);
+
     } catch (\Exception $e) {
-        Log::error('DB INSERTION FAILED:', ['error' => $e->getMessage(), 'data' => $data]);
-        return response()->json(['message' => 'Erreur interne: Échec de l\'enregistrement du rendez-vous.'], 500);
+        Log::error('=== ERREUR GLOBALE AppointmentController@store ===', [
+            'error_message' => $e->getMessage(),
+            'error_file' => $e->getFile(),
+            'error_line' => $e->getLine(),
+            'error_trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'message' => 'Erreur interne du serveur lors de la création du rendez-vous.',
+            'error' => config('app.debug') ? $e->getMessage() : 'Contactez l\'administrateur'
+        ], 500);
     }
-
-    // --- Notifications et Événement ---
-    // ... (votre code de notifications ici)
-
-    Log::info('AppointmentController@store - Final Response Sent.', ['appointment_id' => $appointment->id]);
-    return response()->json(['appointment' => $appointment], 201);
 }
     /**
      * Display the specified resource.
