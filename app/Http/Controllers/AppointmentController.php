@@ -82,82 +82,40 @@ class AppointmentController extends Controller
 // ... imports ...
 // ...
 
-public function store(AppointmentRequest $request, string $patientId): JsonResponse
+public function store(Request $request, string $patientId): JsonResponse
 {
-    $user = auth()->user();
-    $data = $request->validated();
-
-    // Logs Initiaux (qui fonctionnent selon votre rapport)
-    Log::info('AppointmentController@store - Données validées:', $data);
-    Log::info('AppointmentController@store - Utilisateur authentifié:', [
-        'id' => $user->id,
-        'role' => $user->roles->pluck('name')->first() ?? 'N/A'
-    ]);
-    Log::info('AppointmentController@store - ID Patient de la route:', ['id' => $patientId]);
-
-    // ... (Logique de validation de Patient::find($routePatientId) qui est correcte) ...
-
-    // --- Gestion des Permissions par rôle ---
-    if ($user->hasRole('patient')) {
-        // Logique de patient (correcte)
-        // ...
-        $data['patient_id'] = $user->patient->id;
-        $data['status'] = $data['status'] ?? 'pending'; // Changed to 'pending' as discussed
-        Log::info('Permission Check: OK. User is Patient booking for themselves.', ['final_patient_id' => $data['patient_id'], 'status' => $data['status']]);
-
-    } elseif ($user->hasRole('doctor')) {
-        // Logique de docteur (correcte)
-        // ...
-        $data['doctor_id'] = $user->doctor->id;
-        $data['patient_id'] = $routePatientId;
-        $data['status'] = $data['status'] ?? 'scheduled';
-        Log::info('Permission Check: OK. User is Doctor booking for patient.', ['final_patient_id' => $data['patient_id'], 'status' => $data['status']]);
-
-    } elseif ($user->hasRole('nurse') || $user->hasRole('admin')) {
-        // Logique Admin/Infirmière (correcte)
-        $data['patient_id'] = $routePatientId;
-        $data['status'] = $data['status'] ?? 'scheduled';
-        Log::info('Permission Check: OK. User is Admin/Nurse booking for patient.', ['final_patient_id' => $data['patient_id'], 'status' => $data['status']]);
-
-    } else {
-        // Logique de refus (qui fonctionnerait si l'utilisateur n'avait pas de rôle)
-        Log::error('Unauthorized access to AppointmentController@store.', ['user_id' => $user->id, 'roles' => $user->roles->pluck('name')->toArray()]);
-        return response()->json(['message' => 'Accès non autorisé à cette action.'], 403);
-    }
-
-    // --- Vérification de la Disponibilité du créneau ---
-    $isAvailable = Appointment::where('doctor_id', $data['doctor_id'])
-        ->where('appointment_date', $data['appointment_date'])
-        ->where('appointment_time', $data['appointment_time'])
-        ->whereIn('status', ['scheduled', 'confirmed', 'pending'])
-        ->doesntExist();
-
-    Log::info('Disponibility Check:', ['is_available' => $isAvailable, 'doctor_id' => $data['doctor_id']]);
-
-    if (!$isAvailable) {
-        Log::warning('Appointment time slot not available.', ['doctor_id' => $data['doctor_id'], 'date' => $data['appointment_date'], 'time' => $data['appointment_time']]);
-        throw ValidationException::withMessages([
-            'appointment_time' => 'Ce créneau horaire est déjà pris ou en attente pour ce docteur.'
-        ]);
-    }
-
-    // --- Création du rendez-vous ---
     try {
+        // VALIDATION MANUELLE TEMPORAIRE
+        $data = $request->validate([
+            'doctor_id' => 'required|exists:doctors,id',
+            'appointment_date' => 'required|date',
+            'appointment_time' => 'required',
+            'type' => 'required|in:consultation,suivi,urgence,vaccination,examen,teleconsultation',
+            'motif' => 'required|string|max:1000',
+        ]);
+
+        $user = auth()->user();
+
+        Log::info('=== STORE METHOD REACHED ===');
+        Log::info('User:', ['id' => $user->id]);
+        Log::info('Data:', $data);
+
+        // LOGIQUE SIMPLIFIÉE
+        $data['patient_id'] = $patientId;
+        $data['status'] = 'pending';
+
         $appointment = Appointment::create($data);
-        Log::info('APPOINTMENT CREATED SUCCESSFULLY.', ['appointment_id' => $appointment->id]);
+
+        return response()->json([
+            'message' => 'Rendez-vous créé avec succès.',
+            'appointment' => $appointment
+        ], 201);
+
     } catch (\Exception $e) {
-        // 🚨 SÉCURITÉ : Capturez une erreur lors de l'insertion dans la DB
-        Log::error('DB INSERTION FAILED:', ['error' => $e->getMessage(), 'data' => $data]);
-        return response()->json(['message' => 'Erreur interne: Échec de l\'enregistrement du rendez-vous.'], 500);
+        Log::error('STORE ERROR:', ['error' => $e->getMessage()]);
+        return response()->json(['message' => $e->getMessage()], 500);
     }
-
-    // --- Notifications et Événement (Le reste du code fonctionne après la création) ---
-    // ...
-
-    Log::info('AppointmentController@store - Final Response Sent.', ['appointment_id' => $appointment->id]);
-    return response()->json(['appointment' => $appointment], 201);
 }
-
     /**
      * Display the specified resource.
      * Les patients et docteurs peuvent voir leurs rendez-vous respectifs. Les admins voient tout.
