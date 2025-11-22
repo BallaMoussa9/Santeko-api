@@ -2,22 +2,27 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use App\Models\Role;
-use Illuminate\Support\Facades\Log;
+use App\Models\User;
 use App\Models\Admin;
+use App\Models\Nurse;
+use App\Models\Doctor;
+use App\Models\Patient;
 use App\Models\Department;
 use Illuminate\Http\Request;
+use App\Models\LabTechnician;
+use App\Models\FirstResponder;
+use Illuminate\Validation\Rule;
+//use Spatie\Permission\Models\Role;
 use Illuminate\Http\JsonResponse;
+
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
-//use Spatie\Permission\Models\Role;
-use Illuminate\Validation\Rule;
-
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Validator;
 
 
 class UserController extends Controller
@@ -27,6 +32,20 @@ class UserController extends Controller
     //     // Assure que l'utilisateur est authentifié pour toutes les actions de ce contrôleur
     //     $this->middleware('auth:sanctum');
     // }
+
+    /**
+     * Mappe le nom du rôle à son Modèle de profil et à la clé étrangère dans la table 'users'.
+     * @var array
+     */
+    private $roleMapping = [
+        'admin' => ['model' => Admin::class, 'foreign_key' => 'admin_id'], 
+        'patient' => ['model' => Patient::class, 'foreign_key' => 'patient_id'],
+        'doctor' => ['model' => Doctor::class, 'foreign_key' => 'doctor_id'],
+        'nurse' => ['model' => Nurse::class, 'foreign_key' => 'nurse_id'],
+        'urgentist' => ['model' => FirstResponder::class, 'foreign_key' => 'first_responder_id'],
+        'lab_technician' => ['model' => LabTechnician::class, 'foreign_key' => 'lab_technician_id'],
+    ];
+
 
     /**
      * Récupère toutes les notifications de l'utilisateur.
@@ -98,40 +117,23 @@ class UserController extends Controller
     }
 
     /**
-
      * Récupère les informations de l'utilisateur actuellement authentifié.
-
      * Cette fonction ne retourne QUE les informations de l'utilisateur connecté.
-
      * Elle est sécurisée par le middleware 'auth:sanctum'.
-
      *
-
      * @param Request $request
-
      * @return JsonResponse
-
      */
-
     public function fetchCurrentUser(Request $request): JsonResponse
-
     {
-
-
         $user = $request->user();
 
-
-
         if (!$user) {
-
             return response()->json(['message' => 'Non authentifié.'], 401);
-
         }
-
 
         // $user->load(['roles', 'department']);
         return response()->json($user);
-
     }
     //-----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -248,25 +250,14 @@ class UserController extends Controller
     //-----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     /**
-     * Met à jour le rôle d'un utilisateur spécifique.
-     * @param Request $request
-     * @param User $user
-     * @return JsonResponse
-     */
-   // Exemple dans votre UserController, à l'intérieur d'un bloc try-catch par exemple
-
-// ...
-      /**
-     * Met à jour le rôle (unique) d'un utilisateur spécifique.
-     * Étant donné la méthode sync, l'utilisateur n'aura qu'un seul rôle après cette opération.
-     *
+     * Met à jour le rôle d'un utilisateur et synchronise les clés étrangères.
      * @param Request $request
      * @param User $user
      * @return JsonResponse
      */
     public function updateUserRole(Request $request, User $user): JsonResponse
     {
-        // 1. Vérification de l'autorisation : Seul un administrateur peut modifier les rôles.
+        // 1. Vérification de l'autorisation
         if (!Auth::user()->hasRole('admin')) {
             Log::warning("Tentative non autorisée de modification de rôle par l'utilisateur " . Auth::id());
             return response()->json(['message' => 'Accès non autorisé.'], 403);
@@ -278,87 +269,101 @@ class UserController extends Controller
         ]);
 
         if ($validator->fails()) {
-            Log::info("Validation échouée lors de la mise à jour du rôle de l'utilisateur {$user->id}.", [
-                'errors' => $validator->errors()->toArray(),
-                'requested_role' => $request->input('role')
-            ]);
             return response()->json(['message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
 
-        DB::beginTransaction(); // Démarre une transaction
+        $newRoleName = $request->input('role');
+
+        DB::beginTransaction();
         try {
             // 3. Trouver le rôle par son nom.
-            $newRole = Role::where('name', $request->input('role'))->firstOrFail();
+            $newRole = Role::where('name', $newRoleName)->firstOrFail();
 
-            // 4. Récupérer les rôles actuels de l'utilisateur pour le log.
-            $currentRoleNames = $user->roles->pluck('name')->implode(', ');
-
-            // 5. Synchroniser les rôles de l'utilisateur.
+            // 4. Synchroniser le rôle dans la table pivot (roles)
             $user->roles()->sync([$newRole->id]);
 
-            // =========================================================================
-            // 💡 NOUVELLE LOGIQUE : SYNCHRONISATION DU PROFIL ADMIN (VOTRE REQUÊTE)
-            // =========================================================================
-            if ($newRole->name === 'admin') {
-                // L'utilisateur est promu admin. Créer ou garantir l'existence de l'entrée dans la table 'admins'.
-                // La clé de recherche est 'user_id', qui doit être l'ID de l'utilisateur.
-                Admin::firstOrCreate(
-                    ['user_id' => $user->id], // Critère de recherche
-                    ['department_id' => null]  // Valeurs par défaut si la création est nécessaire
-                );
-                Log::info("Profil Admin créé/mis à jour pour l'utilisateur {$user->id}.");
+            // 5. 🔑 LOGIQUE CLÉ : Synchronisation des Profils et des Clés Étrangères dans la table 'users'
+            $this->syncAllProfiles($user, $newRoleName);
 
-            } else {
-                // L'utilisateur n'est PAS admin. Supprimer l'entrée de la table 'admins' s'elle existe.
-                // Ceci est crucial pour éviter les entrées orphelines.
-                Admin::where('user_id', $user->id)->delete();
-                Log::info("Profil Admin supprimé pour l'utilisateur {$user->id}.");
-            }
-            // =========================================================================
-            // ⬆️ FIN DE LA LOGIQUE DE SYNCHRONISATION
-            // =========================================================================
-
-            // 6. Commettre la transaction si toutes les opérations sont réussies.
+            // 6. Commettre la transaction
             DB::commit();
 
-            // 7. Loguer le succès de l'opération.
-            Log::info("Rôle de l'utilisateur {$user->id} mis à jour avec succès.", [
+            // 7. Loguer le succès
+            Log::info("Rôle et profil(s) de l'utilisateur {$user->id} mis à jour avec succès.", [
                 'user_id' => $user->id,
-                'old_roles' => $currentRoleNames,
-                'new_role' => $newRole->name,
-                'requested_by_admin' => Auth::id(),
+                'new_role' => $newRoleName,
             ]);
 
-            // 8. Retourner une réponse JSON.
+            // 8. Retourner une réponse
+            // Recharger l'utilisateur pour inclure les IDs de profil mis à jour
             return response()->json([
-                'message' => "Rôle de l'utilisateur mis à jour avec succès.",
-                'user' => $user->load('roles')
+                'message' => "Rôle et profil de l'utilisateur mis à jour avec succès.",
+                'user' => $user->fresh()->load('roles', 'patient', 'doctor', 'nurse', 'firstResponder', 'labTechnician')
             ]);
 
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            DB::rollBack();
-            // ... (Gestion des erreurs existante)
-            return response()->json([
-                'message' => "Le rôle spécifié n'existe pas.",
-                'error' => $e->getMessage()
-            ], 404);
         } catch (\Exception $e) {
             DB::rollBack();
-            // ... (Gestion des erreurs existante)
-            Log::error("Erreur inattendue lors de la mise à jour du rôle de l'utilisateur {$user->id} : " . $e->getMessage(), [
-                'user_id' => $user->id,
-                'requested_role' => $request->input('role'),
+            Log::error("Erreur critique lors de la mise à jour du rôle/profil de l'utilisateur {$user->id}: " . $e->getMessage(), [
                 'exception_file' => $e->getFile(),
                 'exception_line' => $e->getLine(),
-                'stack_trace' => $e->getTraceAsString(),
             ]);
             return response()->json([
-                'message' => "Erreur interne du serveur lors de la mise à jour du rôle.",
+                'message' => "Erreur interne du serveur lors de la mise à jour du rôle et du profil.",
                 'error' => $e->getMessage(),
             ], 500);
         }
     }
-// ...
+
+    /**
+     * Synchronise le profil (Patient, Doctor, Urgentiste, etc.) et met à jour
+     * la clé étrangère correspondante dans la table 'users'.
+     *
+     * @param User $user
+     * @param string $newRoleName
+     * @return void
+     */
+    private function syncAllProfiles(User $user, string $newRoleName): void
+    {
+        $updatedForeignKeys = [];
+
+        foreach ($this->roleMapping as $roleKey => $map) {
+            $Model = $map['model'];
+            $foreignKey = $map['foreign_key'];
+            
+            // 1. Vérifie si l'utilisateur doit avoir ce profil (le nouveau rôle)
+            if ($newRoleName === $roleKey) {
+                // Création/Récupération du profil.
+                // L'entrée DOIT exister dans la table de profil (doctors, patients, etc.)
+                $profile = $Model::firstOrCreate(
+                    ['user_id' => $user->id],
+                    [] // Attributs par défaut pour la création
+                );
+                
+                // 2. Met à jour la clé étrangère dans la table 'users' avec l'ID du PROFIL.
+                $updatedForeignKeys[$foreignKey] = $profile->id;
+                
+                Log::debug("Profil {$roleKey} (ID: {$profile->id}) créé/mis à jour pour User: {$user->id}.");
+
+            } else {
+                // 3. L'utilisateur n'a plus ce rôle : Supprimer l'entrée du profil (si elle existe)
+                $profileToDelete = $Model::where('user_id', $user->id)->first();
+            
+                if ($profileToDelete) {
+                     // Supprimer l'entrée du profil de sa table spécifique (ex: doctors)
+                     $profileToDelete->delete();
+                     Log::debug("Ancien Profil {$roleKey} (ID: {$profileToDelete->id}) supprimé pour User: {$user->id}.");
+                }
+                
+                // 4. Assure que la clé étrangère dans 'users' est NULL
+                $updatedForeignKeys[$foreignKey] = null;
+            }
+        }
+
+        // 5. Met à jour toutes les clés étrangères simultanément dans la table 'users'
+        // Cette méthode utilise $fillable, ce qui est maintenant vérifié dans User.php.
+        $user->update($updatedForeignKeys);
+        Log::info("Clés étrangères utilisateur mises à jour : ", $updatedForeignKeys);
+    }
 
     //-----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -461,5 +466,30 @@ class UserController extends Controller
         $user->forceFill(['password' => Hash::make($request->input('password'))])->save();
 
         return response()->json(['message' => 'Mot de passe mis à jour avec succès.']);
+    }
+
+    //-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+    
+    /**
+     * Récupère le profil Infirmier par l'ID de l'utilisateur.
+     *
+     * @param User $user
+     * @return JsonResponse
+     */
+    public function getProfileIdByUserId(User $user): JsonResponse
+    {
+        // Supposons que cette méthode est pour les infirmiers
+        $nurse = $user->nurse;
+
+        if (!$nurse) {
+            return response()->json([
+                'message' => 'Profil infirmier non trouvé pour cet utilisateur.'
+            ], 404);
+        }
+
+        return response()->json([
+            'id' => $nurse->id,
+            'user_id' => $nurse->user_id
+        ]);
     }
 }

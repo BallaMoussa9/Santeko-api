@@ -24,7 +24,7 @@ class MedicalReportRequest extends FormRequest
         return [
              'report_type' => 'required| string| max:255',
             'title' => 'required| string| max:255',
-            'content' => 'required| string| max:255',
+            'content' => 'required| string',
         ];
     }
     public function messages(){

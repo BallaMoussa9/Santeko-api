@@ -67,7 +67,7 @@ use App\Http\Controllers\ReportController;
 // Enregistrement et connexion
 Route::post('/register', [AuthRegisteredUserController::class, 'store']);
 Route::post('/login', [AuthRegisteredUserController::class, 'login']);
-
+ 
 // Réinitialisation de mot de passe (Fortify)
 Route::post('/forgot-password', [PasswordResetLinkController::class, 'store']);
 Route::post('/reset-password', [NewPasswordController::class, 'store']);
@@ -112,6 +112,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/departments', [DepartmentController::class, 'index']); // La liste des départements
         Route::get('public-settings', [SystemSettingController::class, 'publicSettings']); // Paramètres publics du système
         // Route::post('/doctors/register', [DoctorController::class, 'store']); // Exemple de route publique pour l'inscription docteur
+        Route::get('/responsible-users', [DepartmentController::class, 'getResponsibleUsers']);
     });
 
 
@@ -157,27 +158,60 @@ Route::middleware('auth:sanctum')->group(function () {
     // =========================================================================
     // 4. ROUTES POUR L'URGENTISTE (`EmergencyPhysicians`)
     // =========================================================================
-     Route::post('/sos', [SosController::class, 'store']);
+  // routes/api.php
 
-    Route::put('/sos/{id}/update-location', [SOSController::class, 'updateLocation']);
-   Route::prefix('urgentist')->controller(EmergencyPhysiciansController::class)->group(function () {
-    // 🚨 Gestion des alertes SOS géolocalisées
-    Route::get('alerts/active', 'getActiveSosAlerts'); // Tableau de bord en temps réel >
-    Route::get('alerts/{alertId}', 'getSosAlertDetails'); // Détails d'une alerte spécifique
-    Route::put('alerts/{alertId}/take-charge', 'takeChargeOfAlert'); // Marquer comme pris en charge
-    Route::put('alerts/{alertId}/resolve', 'resolveAlert'); // Marquer comme résolue
-    Route::post('alerts/{alertId}/message-patient', 'sendMessaEmergencyPhysiciansnt'); // Envoyer un message au patient
+// Routes générales (souvent pour le Patient/Déclencheur)
+Route::post('/sos', [SosController::class, 'store']);
+Route::put('/sos/{id}/update-location', [SOSController::class, 'updateLocation']);
 
-    // 👨‍⚕️ CRUD et recherche pour les urgentistes
-    Route::post('register', 'createEmergencyPhysician'); // Crée / met à jour un urgentiste (⚠️ vérifie le nom de la méthode)
-    Route::get('search', 'emergencySearch'); // Recherche d'urgentistes
-    Route::get('/', 'getAllEmergencyPhysicians'); // Lister tous les urgentistes
-    Route::get('{emergency}', 'getEmergencyPhysicians'); // Afficher un urgentiste spécifique
-    Route::delete('{emergency}', 'deleteEmergencyPhysicians'); // Supprimer un urgentiste
-    Route::put('{emergency}', 'updateEmergencyPhysicians'); // Mettre à jour un urgentiste
+// ======================================================= 
+// ✅ CORRECTION DES ROUTES URGENTISTES
+// =======================================================
+
+// 🔑 1. Route spécifique SANS ID (DOIT ÊTRE EN PREMIER)
+// Endpoint: GET /urgentist/sos-alerts/active
+Route::get('/urgentist/sos-alerts/active', [SOSController::class, 'indexActive']);
+
+
+// 🔑 2. Route générique AVEC ID (DOIT VENIR APRES)
+// Endpoint: GET /urgentist/sos-alerts/{id}
+Route::get('/urgentist/sos-alerts/{id}', [SOSController::class, 'show']);
+
+// 3. Actions basées sur l'ID (L'ordre n'est pas critique ici, mais c'est plus clair)
+Route::post('/urgentist/sos-alerts/{id}/take-charge', [SOSController::class, 'takeCharge']);
+Route::post('/urgentist/sos-alerts/{id}/resolve', [SOSController::class, 'resolve']);
+Route::prefix('urgentist')->controller(EmergencyPhysiciansController::class)->group(function () {
+    
+    // =======================================================
+    // 🚨 1. ROUTES ALERTES (Alerts SOS)
+    // =======================================================
+    
+    // Statiques / Spécifiques (Doivent être en haut)
+    Route::get('alerts-stats', 'getAlertsStatsByStatus'); 
+    Route::get('alerts/active', 'getActiveSosAlerts'); 
+    Route::get('alerts/history', 'getSosAlertsHistory');
+    
+    // Routes avec {alertId}
+    Route::get('alerts/{alertId}', 'getSosAlertDetails'); 
+    Route::put('alerts/{alertId}/take-charge', 'takeChargeOfAlert');
+    Route::put('alerts/{alertId}/resolve', 'resolveAlert');
+    Route::post('alerts/{alertId}/message-patient', 'sendMessageToPatient');
+    
+    // =======================================================
+    // 👨‍⚕️ 2. ROUTES URGENTISTE (CRUD)
+    // =======================================================
+
+    // ✅ ROUTES STATIQUES (Liste, Enregistrement, Recherche) - PRIORITAIRES
+    Route::get('/', 'getAllEmergencyPhysicians'); // LISTE (prioritaire sur {emergency})
+    Route::post('register', 'createEmergencyPhysician');
+    Route::get('search', 'emergencySearch');
+    Route::get('user/{userId}',  'getFirstResponderByUserId');
+
+    // ROUTES DYNAMIQUES AVEC PARAMÈTRE {emergency} - DOIVENT ÊTRE LES DERNIÈRES
+    Route::get('{emergency}', 'getEmergencyPhysicians'); // DÉTAIL
+    Route::delete('{emergency}', 'deleteEmergencyPhysicians');
+    Route::put('{emergency}', 'updateEmergencyPhysicians');
 });
-
-
     // =========================================================================
     // 5. ROUTES POUR LES PATIENTS
     // =========================================================================
@@ -215,12 +249,12 @@ Route::middleware('auth:sanctum')->group(function () {
         // Routes pour le système de messagerie (chat)
 
     });
-    Route::prefix('chat')->group(function () {
-                Route::get('/conversations', [ChatController::class, 'indexConversations']); // Lister les conversations du patient
-                Route::post('/conversations', [ChatController::class, 'createOrGetPrivateConversation']); // Créer/obtenir un chat
-                Route::get('/conversations/{conversation}/messages', [ChatController::class, 'showConversationMessages']); // Messages d'une conversation
-                Route::post('/conversations/{conversation}/messages', [ChatController::class, 'sendMessage']); // Envoyer un message
-            });
+    // Route::prefix('chat')->group(function () {
+    //             Route::get('/conversations', [ChatController::class, 'indexConversations']); // Lister les conversations du patient
+    //             Route::post('/conversations', [ChatController::class, 'createOrGetPrivateConversation']); // Créer/obtenir un chat
+    //             Route::get('/conversations/{conversation}/messages', [ChatController::class, 'showConversationMessages']); // Messages d'une conversation
+    //             Route::post('/conversations/{conversation}/messages', [ChatController::class, 'sendMessage']); // Envoyer un message
+    //         });
 
     // =========================================================================
     // 6. ROUTES POUR LES DOCTEURS
@@ -243,10 +277,10 @@ Route::middleware('auth:sanctum')->group(function () {
         // Gestion des patients et de leurs dossiers
         Route::get('patients', [DoctorController::class, 'listPatients']); // Lister les patients du docteur
         Route::get('patients/{patientId}/dme', [DoctorController::class, 'getPatientDme']); // Accéder au dossier médical d'un patient
-
+        Route::get('/patients/{patientId}/consultations/check', [ConsultationController::class, 'checkValidConsultation']);
         // Gestion des consultations
         Route::post('patients/{patientId}/consultations/start', [ConsultationController::class, 'startConsultation']); // Démarrer une consultation
-        Route::put('consultations/{consultationId}/end', [ConsultationController::class, 'endConsultation']); // Terminer une consultation
+        Route::put('consultations/{consultation}/end', [ConsultationController::class, 'endConsultation']);// Terminer une consultation
         Route::put('consultations/{consultationId}/dme', [DoctorController::class, 'updatePatientDme']); // Mettre à jour le DME durant la consultation
         // Autres fonctionnalités
         // Route::post('patients/{patientId}/prescriptions', [DoctorController::class, 'issuePrescription']); // Émettre une prescription
@@ -257,7 +291,7 @@ Route::middleware('auth:sanctum')->group(function () {
       });
       Route::get('patients/{patient}/consultations', [ConsultationController::class, 'indexByPatient']);
 
-
+      Route::put('consultations/{consultation}/end', [ConsultationController::class, 'endConsultation']);
     // --- POUR LES PATIENTS ---
     // Les patients consultent leurs propres ordonnances.
     Route::post('doctors/{doctorId}/patients/{patientId}/prescriptions', [PrescriptionController::class, 'store']);
@@ -283,7 +317,12 @@ Route::middleware('auth:sanctum')->group(function () {
      Route::apiResource('donors', DonorController::class);
      Route::apiResource('allergies', AllergyController::class);
 
-
+Route::prefix('chat')->group(function () {
+                Route::get('/conversations', [ChatController::class, 'indexConversations']); // Lister les conversations du patient
+                Route::post('/conversations', [ChatController::class, 'createOrGetPrivateConversation']); // Créer/obtenir un chat
+                Route::get('/conversations/{conversation}/messages', [ChatController::class, 'showConversationMessages']); // Messages d'une conversation
+                Route::post('/conversations/{conversation}/messages', [ChatController::class, 'sendMessage']); // Envoyer un message
+            });
 
 
 
@@ -299,16 +338,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/{nurse}', 'destroy'); // Supprimer un infirmier
         Route::put('/{nurse}', 'update'); // Mettre à jour un infirmier
         Route::get('/user/{user}', [NurseController::class, 'getProfileIdByUserId']);
-
+        // Route d'exportation des rapports d'activité infirmière
+        Route::get('{nurse}/activity-report/{report}/download', 'downloadActivityReport');        // Note : Le paramètre {report} sera lié au modèle NurseActivityReport.
         // Routes spécifiques à un infirmier donné (utilisant le Route Model Binding {nurse})
         Route::get('/{nurse}/patients/{patientId}/dme', 'getPatientDme'); // Accéder au dossier d'un patient
         Route::post('/{nurse}/patients/{patientId}/dme/vitalsigns', 'recordVitalSigns'); // Saisir les signes vitaux
         Route::post('/{nurse}/activities-report', 'createActivitiesReport'); // Créer un rapport d'activités
         Route::get('/{nurse}/blood-bank', 'getBloodBankOverview'); // Accéder au module de gestion du sang
-
-        // Optionnel: Gérer les réserves de sang (décommenter si besoin)
-        // Route::post('/{nurse}/blood-bank/units', 'addBloodUnit');
-        // Route::delete('/{nurse}/blood-bank/units/{unitId}', 'removeBloodUnit');
     });
 
 
@@ -333,15 +369,14 @@ Route::middleware('auth:sanctum')->group(function () {
     // 10. ROUTES POUR LES RAPPORTS MÉDICAUX (`MedicalReport`)
     // =========================================================================
     Route::prefix('/medicalreports')->controller(MedicalReportController::class)->group(function(){
-        Route::post('/register/{patient}', 'create'); // Créer un rapport médical pour un patient
-        Route::get('/', 'getAllMedicalReport'); // Lister tous les rapports médicaux
-        Route::get('/search', 'medicalreportSearch'); // Rechercher un rapport médical
-        Route::get('/{report}', 'showreport'); // Afficher un rapport médical spécifique
-        Route::delete('/{report}', 'deleteMedicalReport'); // Supprimer un rapport médical
-        Route::put('/{report}', 'update'); // Mettre à jour un rapport médical
-        Route::get('/{report}/download', 'downloadReport'); // Télécharger un rapport spécifique
-
-    });
+    Route::post('/register/{patient}', 'create');
+    Route::get('/', 'getAllMedicalReport');
+    Route::get('/search', 'medicalreportSearch');
+    Route::get('/{report}', 'showreport');
+    Route::delete('/{report}', 'deleteMedicalreport'); // 🔥 CORRECTION: Nom de méthode
+    Route::put('/{report}', 'update');
+    Route::get('/{report}/download', 'downloadReport'); // ✅ Route de téléchargement
+});
  Route::prefix('/doctors/{doctorId}/patients/{patientId}/medical-reports')->controller(MedicalReportController::class)->group(function () {
         Route::get('/', 'indexByDoctorAndPatient'); // Récupérer les rapports pour un docteur et patient spécifique
         Route::post('/', 'storeByDoctorAndPatient'); // Créer un rapport pour un docteur et patient spécifique

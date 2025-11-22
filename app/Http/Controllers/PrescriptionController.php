@@ -3,16 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Models\Prescription;
+use Illuminate\Http\Request;
+use App\Models\PrescriptionLine;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Log; // Pour le logging
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use App\Models\Consultation; // Utilisé pour la vérification de l'accès
 use App\Models\Doctor; // Utilisé pour la résolution de modèle dans la route
 use App\Models\Patient; // Utilisé pour la résolution de modèle dans la route
-use App\Models\Consultation; // Utilisé pour la vérification de l'accès
 use App\Http\Requests\PrescriptionRequest; // C'est votre StorePrescriptionRequest
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Validation\ValidationException;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Support\Facades\Log; // Pour le logging
 
 class PrescriptionController extends Controller
 {
@@ -28,101 +30,205 @@ class PrescriptionController extends Controller
     // {
     //     return $patient;
     // }
+// Dans App\Http\Controllers\PrescriptionController.php
+/**
+ * Récupère toutes les prescriptions d'un patient donné.
+ * GET /api/patients/{patientId}/prescriptions
+ */
+public function index($patientId): JsonResponse
+{
+    $user = auth()->user();
+    
+    Log::info('📥 API Index Prescriptions appelée', [
+        'patient_id' => $patientId,
+        'user_id' => $user->id,
+        'user_roles' => $user->roles->pluck('name')->toArray() // ✅ Correction
+    ]);
 
+    // VÉRIFICATION DES PERMISSIONS AVEC VOTRE SYSTÈME DE RÔLES
+    if ($user->hasRole('patient')) {
+        $patient = $user->patient;
+        if (!$patient || $patient->id != $patientId) {
+            return response()->json(['message' => 'Accès non autorisé.'], 403);
+        }
+    }
+    
+    // VÉRIFICATION QUE LE PATIENT EXISTE
+    $patient = Patient::find($patientId);
+    if (!$patient) {
+        return response()->json(['message' => 'Patient non trouvé.'], 404);
+    }
 
-    /**
-     * Crée une nouvelle prescription et ses lignes. (POST /doctors/{doctorId}/patients/{patientId}/prescriptions)
-     * Cette méthode remplace et améliore votre `issuePrescription`.
+    try {
+        // CHARGER LES PRESCRIPTIONS AVEC LES RELATIONS
+        $prescriptions = Prescription::where('patient_id', $patientId)
+            ->with([
+                'lines', // 🔥 CORRECTION : Utiliser 'lines' 
+                'doctor.user', // ✅ Adapté à votre structure
+                'consultation'
+            ])
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        Log::info('✅ Prescriptions trouvées', [
+            'count' => $prescriptions->count(),
+            'patient_id' => $patientId
+        ]);
+
+        return response()->json($prescriptions);
+
+    } catch (\Exception $e) {
+        Log::error('❌ Erreur lors du chargement des prescriptions', [
+            'patient_id' => $patientId,
+            'error' => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'message' => 'Erreur lors du chargement des prescriptions.',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
+   /**
+ * Crée une nouvelle prescription avec validation directe
+ * POST /api/doctors/{doctorId}/patients/{patientId}/prescriptions
+ */
+/**
+     * Crée une nouvelle prescription avec validation directe
+     * POST /api/doctors/{doctorId}/patients/{patientId}/prescriptions
      */
-    public function store(PrescriptionRequest $request, int $doctor, int $patient): JsonResponse
+    public function store(Request $request, $doctorId, $patientId): JsonResponse
     {
-        $doctor = Doctor::findOrFail($doctor);
-        $patient = Patient::findOrFail($patient);
         $user = auth()->user();
-        $data = $request->validated();
-        $linesData = $data['lines'];
-        unset($data['lines']);
 
-        // 1. Vérification des permissions
-        // S'assurer que le docteur dans l'URL est bien le docteur authentifié.
-        if (!$user->hasRole('doctor') || !isset($user->doctor) || $user->doctor->id !== $doctor->id) {
-            throw ValidationException::withMessages(['doctor_id' => 'Seul le docteur authentifié peut émettre une ordonnance en son nom.']);
+        // LOGS DE DEBUG
+        Log::info('=== STORE PRESCRIPTION - VALIDATION DIRECTE ===', [
+            'user_id' => $user->id,
+            'doctor_id' => $doctorId,
+            'patient_id' => $patientId,
+            'request_data' => $request->all()
+        ]);
+
+        // VÉRIFICATION DES PERMISSIONS
+        if (!$user->hasRole('doctor')) {
+            return response()->json(['message' => 'Seul un docteur peut créer une ordonnance.'], 403);
         }
 
-        // 2. Vérification de l'accès métier (existence d'une consultation)
-        $hasAccess = Consultation::where('patient_id', $patient->id)
-            ->where('doctor_id', $doctor->id)
-            ->whereIn('status', ['completed', 'in_progress']) // Assurez-vous des statuts corrects
-            ->exists();
-
-        if (!$hasAccess) {
-            return response()->json(['message' => 'Accès refusé. Aucune consultation appropriée trouvée pour émettre une ordonnance.'], 403);
+        if (is_null($user->doctor)) {
+            return response()->json(['message' => 'Profil docteur non trouvé.'], 403);
         }
 
-        // 3. Préparation des données de prescription
-        $data['patient_id'] = $patient->id; // Patient de la route
-        $data['doctor_id'] = $doctor->id; // Docteur de la route (authentifié)
-        $data['date_prescription'] = $data['date_prescription'] ?? now(); // Utilise la date fournie ou l'actuelle
-        $data['status'] = $data['status'] ?? 'active'; // Statut par défaut si non fourni
+        // VALIDATION DIRECTE DES DONNÉES
+        $validator = Validator::make($request->all(), [
+            'notes' => 'nullable|string|max:1000',
+            'prescription_lines' => 'required|array|min:1',
+            'prescription_lines.*.medication_name' => 'required|string|max:255',
+            'prescription_lines.*.dosage' => 'required|string|max:255',
+            'prescription_lines.*.frequency' => 'required|string|max:255',
+            'prescription_lines.*.duration' => 'required|string|max:255',
+            'prescription_lines.*.instructions' => 'nullable|string|max:255',
+        ], [
+            'prescription_lines.required' => 'Au moins un médicament est requis pour l\'ordonnance.',
+            'prescription_lines.*.medication_name.required' => 'Le nom du médicament est obligatoire.',
+            'prescription_lines.*.dosage.required' => 'Le dosage est obligatoire.',
+            'prescription_lines.*.frequency.required' => 'La fréquence est obligatoire.',
+            'prescription_lines.*.duration.required' => 'La durée est obligatoire.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Données de l\'ordonnance invalides.',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        // VÉRIFICATION CONSULTATION AVEC CRÉATION AUTOMATIQUE SI BESOIN
+        $validConsultation = Consultation::where('patient_id', $patientId)
+            ->where('doctor_id', $user->doctor->id)
+            ->whereIn('status', ['pending', 'confirmed'])
+            ->latest()
+            ->first();
+
+        // Si aucune consultation, en créer une automatiquement
+        if (!$validConsultation) {
+            try {
+                Log::info('Création automatique de consultation pour ordonnance');
+                $validConsultation = Consultation::create([
+                    'patient_id' => $patientId,
+                    'doctor_id' => $user->doctor->id,
+                    'type' => 'consultation_ordonnance',
+                    'motif' => 'Consultation pour ordonnance',
+                    'status' => 'pending',
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Erreur création consultation automatique', ['error' => $e->getMessage()]);
+                return response()->json([
+                    'message' => 'Erreur lors de la création de la consultation.',
+                    'error' => $e->getMessage()
+                ], 500);
+            }
+        }
 
         DB::beginTransaction();
         try {
-            $prescription = Prescription::create($data);
+            // CRÉATION DE LA PRESCRIPTION
+            $prescription = Prescription::create([
+                'doctor_id' => $user->doctor->id,
+                'patient_id' => $patientId,
+                'consultation_id' => $validConsultation->id,
+                'date_prescription' => now(),
+                'status' => 'confirmed',
+                'notes' => $request->input('notes'),
+            ]);
 
-            foreach ($linesData as $lineData) {
-                // Note : Pas besoin de 'prescription_id' ici car create() l'ajoute automatiquement via la relation
-                $prescription->lines()->create($lineData);
+            // CRÉATION DES LIGNES DE PRESCRIPTION
+            foreach ($request->prescription_lines as $line) {
+                PrescriptionLine::create([
+                    'prescription_id' => $prescription->id,
+                    'medication_name' => $line['medication_name'],
+                    'dosage' => $line['dosage'],
+                    'frequency' => $line['frequency'],
+                    'duration' => $line['duration'],
+                    'instructions' => $line['instructions'] ?? null,
+                ]);
             }
+
+            // MARQUER LA CONSULTATION COMME CONFIRMÉE
+            $validConsultation->update(['status' => 'confirmed']);
 
             DB::commit();
 
-            return response()->json(['message' => 'Ordonnance émise avec succès.', 'data' => $prescription->load('lines')], 201);
+            // CHARGER LES RELATIONS POUR LA RÉPONSE
+            $prescription->load('lines');
+
+            Log::info('Ordonnance créée avec succès', [
+                'prescription_id' => $prescription->id,
+                'consultation_id' => $validConsultation->id,
+                'nombre_lignes' => count($request->prescription_lines)
+            ]);
+
+            return response()->json([
+                'message' => 'Ordonnance créée avec succès',
+                'data' => $prescription
+            ], 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error("Erreur lors de l'émission de l'ordonnance: " . $e->getMessage(), ['trace' => $e->getTraceAsString(), 'request_data' => $request->all()]);
-            return response()->json(['message' => 'Erreur lors de l\'émission de l\'ordonnance.', 'error' => $e->getMessage()], 500);
+            Log::error('Erreur création ordonnance', ['error' => $e->getMessage()]);
+            return response()->json([
+                'message' => 'Erreur lors de la création de l\'ordonnance',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
-
 
     /**
      * Affiche la liste des prescriptions d'un patient donné. (GET /patients/{patientId}/prescriptions)
      */
 // App\Http\Controllers\PrescriptionController.php
 
-public function index(int $patientId): JsonResponse
-{
-    $user = auth()->user();
 
-    // 1. Charger le patient, renvoie 404 si ID non trouvé.
-    try {
-        $patient = Patient::findOrFail($patientId);
-    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-        return response()->json(['message' => 'Patient non trouvé.'], 404);
-    }
-
-    // 2. Logique de Permission : Assurer que le patient ne voit que ses propres données.
-    if ($user->hasRole('patient')) {
-        // Vérifie si l'utilisateur est bien le patient cible de l'URL
-        if (!isset($user->patient) || $user->patient->id !== $patient->id) {
-             return response()->json(['message' => 'Accès non autorisé à ces prescriptions.'], 403);
-        }
-    }
-    // Optionnel : ajouter ici la logique de permission pour Docteur et Admin
-    // ...
-
-    // 3. Récupération des données.
-    // Utilisation de la relation 'prescriptionLines' et 'doctor.user' pour le frontend.
-    $prescriptions = Prescription::where('patient_id', $patient->id)
-                                 ->with(['doctor.user', 'lines'])
-                                 ->get(); // ->get() retourne toujours une Collection (même vide)
-
-    // 4. Retourner les prescriptions.
-    // La méthode response()->json() prend la Collection et la sérialise en JSON.
-    // Si $prescriptions est vide, elle retourne '[]', ce qui résout le problème 'undefined'.
-    return response()->json($prescriptions);
-}
     /**
      * Affiche une prescription spécifique. (GET /patients/{patientId}/prescriptions/{prescriptionId})
      */

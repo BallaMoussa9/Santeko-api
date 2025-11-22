@@ -6,8 +6,7 @@ use App\Models\User;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
-// L'import Request n'est pas nécessaire si vous n'avez pas de route personnalisée appelant __invoke
-// use Illuminate\Http\Request;
+use Illuminate\Http\Request;
 use Laravel\Fortify\Contracts\UpdatesUserProfileInformation;
 
 class UpdateUserProfileInformation implements UpdatesUserProfileInformation
@@ -21,6 +20,8 @@ class UpdateUserProfileInformation implements UpdatesUserProfileInformation
      */
     public function update(User $user, array $input): void
     {
+        // 1. Validation : On valide seulement les champs qui pourraient être présents.
+        // Si language_id n'est pas envoyé, on ne le valide pas.
         Validator::make($input, [
             'first_name' => ['required', 'string', 'max:255'],
             'last_name' => ['required', 'string', 'max:255'],
@@ -35,25 +36,32 @@ class UpdateUserProfileInformation implements UpdatesUserProfileInformation
             'country' => ['nullable', 'string', 'max:255'],
             'city' => ['nullable', 'string', 'max:255'],
             'address' => ['nullable', 'string', 'max:255'],
-            // Ajoutez ici les champs 'language_id' et 'status' si vous les envoyez aussi avec cette route
-            'language_id' => ['nullable', 'integer'],
+            // Si vous envoyez language_id, vous devez vous assurer que l'ID existe
+            'language_id' => ['nullable', 'integer', 'exists:languages,id'],
             'status' => ['nullable', 'string', 'max:255'],
         ])->validateWithBag('updateProfileInformation');
 
+        // 2. Préparation des données pour la mise à jour :
+        // On ne met à jour que les champs présents dans $input, sans valeurs par défaut forcées.
+        $dataToUpdate = [
+            'first_name' => $input['first_name'],
+            'last_name' => $input['last_name'],
+            'email' => $input['email'],
+            // Les autres champs sont ajoutés uniquement s'ils sont dans le tableau $input.
+        ];
+
+        // Mappage conditionnel pour les champs optionnels
+        $optionalFields = ['phone', 'country', 'city', 'address', 'language_id', 'status'];
+        foreach ($optionalFields as $field) {
+            if (isset($input[$field])) {
+                $dataToUpdate[$field] = $input[$field];
+            }
+        }
+
         if ($input['email'] !== $user->email && $user instanceof MustVerifyEmail) {
-            $this->updateVerifiedUser($user, $input);
+            $this->updateVerifiedUser($user, $dataToUpdate);
         } else {
-            $user->forceFill([
-                'first_name' => $input['first_name'],
-                'last_name' => $input['last_name'],
-                'email' => $input['email'],
-                'phone' => $input['phone'] ?? null,
-                'country' => $input['country'] ?? null,
-                'city' => $input['city'] ?? null,
-                'address' => $input['address'] ?? null,
-                'language_id' => $input['language_id'] ?? 1, // Valeur par défaut si non fournie
-                'status' => $input['status'] ?? 'Disponible', // Valeur par défaut
-            ])->save();
+            $user->forceFill($dataToUpdate)->save();
         }
     }
 
@@ -62,18 +70,10 @@ class UpdateUserProfileInformation implements UpdatesUserProfileInformation
      */
     protected function updateVerifiedUser(User $user, array $input): void
     {
-        $user->forceFill([
-            'first_name' => $input['first_name'],
-            'last_name' => $input['last_name'],
-            'email' => $input['email'],
-            'email_verified_at' => null,
-            'phone' => $input['phone'] ?? null,
-            'country' => $input['country'] ?? null,
-            'city' => $input['city'] ?? null,
-            'address' => $input['address'] ?? null,
-            'language_id' => $input['language_id'] ?? 1,
-            'status' => $input['status'] ?? 'Disponible',
-        ])->save();
+        // On ajoute le champ 'email_verified_at' => null à la mise à jour
+        $input['email_verified_at'] = null;
+
+        $user->forceFill($input)->save();
 
         $user->sendEmailVerificationNotification();
     }
@@ -81,14 +81,12 @@ class UpdateUserProfileInformation implements UpdatesUserProfileInformation
     /**
      * Méthode __invoke() pour gérer les appels si la route Fortify est configurée
      * pour appeler la classe comme un Invokable Controller.
-     * Cette méthode va simplement déléguer à la méthode `update`.
      *
      * @param \Illuminate\Http\Request $request
      * @return \Illuminate\Http\Response|\Illuminate\Http\JsonResponse
      */
-    public function __invoke(\Illuminate\Http\Request $request)
+    public function __invoke(Request $request)
     {
-        // 🚨 Assurez-vous que l'utilisateur est authentifié pour accéder au profil
         $user = $request->user();
 
         if (!$user) {
@@ -96,6 +94,7 @@ class UpdateUserProfileInformation implements UpdatesUserProfileInformation
         }
 
         // Appelle la méthode `update` existante avec l'utilisateur et les données de la requête
+        // L'implémentation de `update` gère maintenant uniquement les champs fournis.
         $this->update($user, $request->all());
 
         return response()->json(['message' => 'Profil utilisateur mis à jour avec succès.']);

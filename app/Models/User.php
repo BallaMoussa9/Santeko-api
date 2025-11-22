@@ -20,14 +20,14 @@ use App\Models\Department;
 use App\Models\Analyse;
 use App\Models\Donor;
 use App\Models\Admin;
-use App\Models\Nurse; // Ajout du modèle Nurse pour la relation
+use App\Models\Nurse;
 use App\Traits\Filterable;
 use App\Models\FirstResponder;
 use App\Models\LabTechnician;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-
+use Illuminate\Database\Eloquent\Relations\BelongsTo; // Importation ajoutée
 
 /**
  * @mixin IdeHelperUser
@@ -47,13 +47,14 @@ class User extends Authenticatable
         'status',
         'role_id',
         'language_id',
-        'department_id',
+        'department_id', // Colonne d'affectation
         'phone',
         'email',
         'password',
         'doctor_id',
         'patient_id',
-        'nurse_id', // Ajout de la colonne nurse_id aux attributs remplissables
+        'nurse_id',
+        //'first_responder_id',
     ];
 
     protected $hidden = [
@@ -73,26 +74,17 @@ class User extends Authenticatable
         return $this->hasOne(Donor::class);
     }
     // Relations Many-to-Many
-    /**
-     * Un utilisateur peut avoir plusieurs rôles.
-     */
-
-   public function roles(): BelongsToMany
+    public function roles(): BelongsToMany
     {
-        // Laravel gère les conventions de nommage ici:
-        // - Table pivot: 'role_user' (par défaut pour User et Role)
-        // - Clés étrangères: 'user_id', 'role_id' (par défaut)
         return $this->belongsToMany(Role::class);
     }
-
-
 
     public function conversations(): BelongsToMany
     {
         return $this->belongsToMany(Conversation::class)->withPivot('last_read_at')->withTimestamps();
     }
 
-    // Relations One-to-One (Un utilisateur EST un patient, un docteur, etc.)
+    // Relations One-to-One
     public function patient(): HasOne
     {
     return $this->hasOne(Patient::class, 'user_id');
@@ -103,7 +95,7 @@ class User extends Authenticatable
         return $this->hasOne(Doctor::class);
     }
 
-    public function admin(): HasOne
+    public function admin(): HasOne 
     {
         return $this->hasOne(Admin::class);
     }
@@ -113,17 +105,29 @@ class User extends Authenticatable
         return $this->hasOne(Nurse::class);
     }
 
-    public function firstResponder(): HasOne
+   public function firstResponder(): HasOne
     {
-        return $this->hasOne(FirstResponder::class);
-    }
+        return $this->hasOne(FirstResponder::class, 'user_id'); 
+      }
 
     public function labTechnician(): HasOne
     {
         return $this->hasOne(LabTechnician::class);
     }
 
-    // Relations One-to-Many
+    // 🔑 NOUVELLE RELATION D'AFFECTATION (pour la colonne department_id)
+    /**
+     * Le département auquel cet utilisateur est affecté. 
+     * Cette méthode doit être nommée 'department' pour résoudre l'erreur 500
+     * si votre API appelle User::with('department').
+     */
+    public function department(): BelongsTo // Anciennement "assignedDepartment"
+    {
+        // Utilisation de 'department' pour corriger le RelationNotFoundException
+        return $this->belongsTo(Department::class, 'department_id');
+    }
+    
+    // Relations One-to-Many (où l'utilisateur est la clé étrangère)
     public function appointments()
     {
         return $this->hasMany(Appointment::class, 'doctor_id');
@@ -148,6 +152,12 @@ class User extends Authenticatable
     {
         return $this->hasMany(Language::class);
     }
+    
+    // RELATION INVERSE : Départements dont cet utilisateur est responsable
+    public function responsibleDepartments() 
+    {
+        return $this->hasMany(Department::class, 'user_id');
+    }
 
     // Méthodes utilitaires pour les rôles (la logique est correcte)
     public function hasRole($roleName)
@@ -170,9 +180,4 @@ class User extends Authenticatable
             $this->roles()->detach($role->id);
         }
     }
-    public function department()
-    {
-        return $this->belongsTo(Department::class);
-    }
-
 }

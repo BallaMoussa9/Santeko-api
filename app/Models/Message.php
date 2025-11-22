@@ -10,19 +10,18 @@ class Message extends Model
 {
     use HasFactory;
 
-    // Assurez-vous que le nom de la table est correct.
-    // Si votre table est 'messages' (avec un 's'), pas besoin de $table.
-    // Si votre table est 'message' (sans 's'), ajoutez : protected $table = 'message';
-    // Basé sur notre discussion, c'est 'messages'.
     protected $table = 'messages';
 
     protected $fillable = [
         'conversation_id',
         'user_id',
+        'recever_id', // 🔑 AJOUTEZ CETTE LIGNE
         'content',
-        // Si vous avez d'autres colonnes que vous avez conservées et qui sont pertinentes, ajoutez-les ici
+        'status', // Si cette colonne est toujours remplie
+        'priority', // Si cette colonne est toujours remplie
+        'title', // Si cette colonne est toujours remplie
+        // Assurez-vous d'ajouter ici TOUTES les colonnes que vous remplissez via Message::create
     ];
-
     public function conversation(): BelongsTo
     {
         return $this->belongsTo(Conversation::class);

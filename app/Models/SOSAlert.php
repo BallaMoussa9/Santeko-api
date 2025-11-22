@@ -19,6 +19,7 @@ class SOSAlert extends Model
         'longitude',
         'description',
         'initiated_at',
+        'responded_at',
     ];
 
     protected $casts = [

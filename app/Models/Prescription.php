@@ -3,10 +3,6 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use App\Models\Consultation;
-use App\Models\PrescriptionLine;
-use App\Models\doctor;
-use App\Models\patient;
 
 /**
  * @mixin IdeHelperPrescription
@@ -15,7 +11,8 @@ class Prescription extends Model
 {
     protected $fillable = [
         'doctor_id',
-        'patient_id',
+        'patient_id', 
+        'consultation_id', // 🔥 AJOUT IMPORTANT
         'date_prescription',
         'status',
         'notes',
@@ -24,17 +21,25 @@ class Prescription extends Model
     protected $casts = [
         'date_prescription' => 'date',
     ];
-    public function consultations()
-    {
-        return $this->belongsTo(Consultation::class);
-    }
+
+    // 🎯 SUPPRIMEZ une des deux relations pour éviter le conflit
+    // CHOISISSEZ UN SEUL NOM :
+    
+    // OPTION 1 : Gardez seulement 'lines' (recommandé)
     public function lines()
     {
         return $this->hasMany(PrescriptionLine::class);
     }
-      public function prescriptionLines()
+    
+    // OU OPTION 2 : Gardez seulement 'prescriptionLines'
+    // public function prescriptionLines()
+    // {
+    //     return $this->hasMany(PrescriptionLine::class);
+    // }
+
+    public function consultation()
     {
-        return $this->hasMany(PrescriptionLine::class);
+        return $this->belongsTo(Consultation::class, 'consultation_id');
     }
 
     public function doctor()

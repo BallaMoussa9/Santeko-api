@@ -9,8 +9,6 @@ use Illuminate\Routing\Controller as BaseController;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Log;
-
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\User;
@@ -21,14 +19,13 @@ class ChatController extends BaseController
 {
     use AuthorizesRequests, DispatchesJobs, ValidatesRequests;
 
-    public function __construct()
-    {
-        // authentification via sanctum pour toutes les méthodes du contrôleur
-        $this->middleware('auth:sanctum');
-    }
+    // public function __construct()
+    // {
+    //     $this->middleware('auth:sanctum');
+    // }
 
     /**
-     * Liste des conversations de l'utilisateur avec le dernier message et l'autre participant.
+     * 🔹 Récupère toutes les conversations de l'utilisateur connecté.
      */
     public function indexConversations(): JsonResponse
     {
@@ -36,21 +33,23 @@ class ChatController extends BaseController
 
         $conversations = $user->conversations()
             ->with([
-                // récupérer seulement le dernier message
-                'messages' => fn($q) => $q->latest()->limit(1),
-                // récupérer les utilisateurs sauf l'utilisateur courant (pour afficher l'interlocuteur)
+                // Charge les autres utilisateurs participants (exclut l'utilisateur courant)
                 'users' => fn($q) => $q->where('users.id', '!=', $user->id),
             ])
-            ->get()
-            // trier par date du dernier message (desc)
-            ->sortByDesc(fn($conversation) => $conversation->messages->first()?->created_at)
-            ->values();
+            ->orderBy('conversations.updated_at', 'desc')
+            ->get();
+
+        $conversations->each(function ($c) use ($user) {
+            // Renomme la collection d'utilisateurs à un seul utilisateur pour les conversations privées
+            $c->other_user = $c->users->first();
+            unset($c->users); 
+        });
 
         return response()->json($conversations);
     }
 
     /**
-     * Trouve ou crée une conversation privée entre sender et receiver.
+     * 🔹 Trouve ou crée une conversation privée entre deux utilisateurs.
      */
     public function createOrGetPrivateConversation(Request $request): JsonResponse
     {
@@ -61,78 +60,83 @@ class ChatController extends BaseController
         $sender = auth()->user();
         $receiver = User::find($request->receiver_id);
 
-        if (!$receiver) {
-            return response()->json(['message' => 'Utilisateur destinataire introuvable.'], 404);
+        if (!$receiver || $sender->id === $receiver->id) {
+            return response()->json(['message' => 'Destinataire introuvable ou action non valide.'], 400);
         }
 
-        if ($sender->id === $receiver->id) {
-            return response()->json(['message' => 'Vous ne pouvez pas démarrer une conversation avec vous-même.'], 400);
-        }
-
-        // Rechercher une conversation privée qui contient les deux utilisateurs
+        // Vérifier s’il existe déjà une conversation privée entre eux
         $conversation = Conversation::where('is_private', true)
             ->whereHas('users', fn($q) => $q->where('users.id', $sender->id))
             ->whereHas('users', fn($q) => $q->where('users.id', $receiver->id))
             ->first();
 
-        // S'assurer qu'il n'y a que les deux participants (évite d'ouvrir une conversation de groupe)
-        if ($conversation && $conversation->users()->count() === 2) {
+        if ($conversation) {
+            // Si la conversation existe, on la retourne
             $conversation->load(['users' => fn($q) => $q->where('users.id', '!=', $sender->id)]);
+            $conversation->other_user = $conversation->users->first();
+            unset($conversation->users);
+
             return response()->json($conversation);
         }
 
-        // Sinon créer une nouvelle conversation privée
+        // Sinon, création
         $conversation = Conversation::create(['is_private' => true]);
         $conversation->users()->attach([$sender->id, $receiver->id]);
-
+        
+        // Assurer le format de réponse attendu par le Front
         $conversation->load(['users' => fn($q) => $q->where('users.id', '!=', $sender->id)]);
+        $conversation->other_user = $conversation->users->first();
+        unset($conversation->users);
 
         return response()->json($conversation, 201);
     }
 
     /**
-     * Affiche les messages d'une conversation (pagination).
+     * 🔹 Récupère les messages d’une conversation donnée.
+     * 🔑 CORRECTION CLÉ: Utilisation d'une clause WHERE OR plus robuste pour garantir la récupération des messages.
      */
-   // App/Http/Controllers/ChatController.php
-
-// ... (le code avant showConversationMessages reste le même)
-
-/**
- * Affiche les messages d'une conversation (pagination).
- */
-public function showConversationMessages(Conversation $conversation): JsonResponse
+    public function showConversationMessages(Conversation $conversation): JsonResponse
 {
-    $user = auth()->user();
+    try {
+        $user = auth()->user();
 
-    // Vérifier que l'utilisateur fait partie de la conversation
-    if (! $conversation->users()->where('users.id', $user->id)->exists()) {
-        return response()->json(['message' => 'Accès non autorisé à cette conversation.'], 403);
+        if (! $conversation->users()->where('users.id', $user->id)->exists()) {
+            return response()->json(['message' => 'Accès non autorisé'], 403);
+        }
+
+        $conversation->users()->updateExistingPivot($user->id, ['last_read_at' => now()]);
+
+        $otherUser = $conversation->users()->where('users.id','!=',$user->id)->first();
+        if (!$otherUser) {
+            return response()->json(['data' => []]);
+        }
+
+        $messages = Message::where(function ($query) use ($user, $otherUser) {
+                $query->where('user_id', $user->id)->where('recever_id', $otherUser->id);
+            })->orWhere(function ($query) use ($user, $otherUser) {
+                $query->where('user_id', $otherUser->id)->where('recever_id', $user->id);
+            })->with('user')->orderBy('created_at','asc')->get();
+
+        return response()->json(['data' => $messages]);
+    } catch (\Throwable $e) {
+        \Log::error('showConversationMessages error: '.$e->getMessage(), [
+            'trace' => $e->getTraceAsString(),
+            'conversation_id' => $conversation->id ?? null,
+        ]);
+        return response()->json(['message' => 'Erreur serveur interne.'], 500);
     }
-
-    // Mettre à jour le pivot last_read_at
-    $conversation->users()->updateExistingPivot($user->id, ['last_read_at' => now()]);
-
-    // CHARGEZ LES MESSAGES SANS PAGINATION POUR SIMPLIFIER LE FRONTEND
-    // Si vous tenez à la pagination, vous devrez la gérer dans le chatStore.js
-    // Pour l'instant, simplifions pour que le système fonctionne:
-    $messages = $conversation->messages()
-        ->with('user')
-        ->orderBy('created_at', 'desc') // Important pour le front, car il affiche en reverse
-        ->get();
-
-    // Au lieu de retourner la pagination, retournez directement le tableau de messages.
-    // Si vous aviez la pagination, il faudrait retourner: return response()->json($messages);
-    // et le frontend devrait lire response.data.data
-    return response()->json($messages);
 }
 
+
     /**
-     * Envoie un message dans une conversation.
+     * 🔹 Envoie un message dans une conversation.
+     * 🔑 CORRECTION CLÉ : Assure que l'objet Message renvoyé contient l'utilisateur expéditeur.
      */
     public function sendMessage(Request $request, Conversation $conversation): JsonResponse
     {
         $user = auth()->user();
 
+        // 1. Vérification d'accès
         if (! $conversation->users()->where('users.id', $user->id)->exists()) {
             return response()->json(['message' => 'Accès non autorisé à cette conversation.'], 403);
         }
@@ -141,23 +145,29 @@ public function showConversationMessages(Conversation $conversation): JsonRespon
             'content' => 'required|string|max:2000',
         ]);
 
-        $message = $conversation->messages()->create([
-            'user_id' => $user->id,
-            'content' => $request->input('content'),
-        ]);
-
-        $message->load('user', 'conversation');
-
-        // Diffuse un event (Websockets, pusher, etc.)
-        MessageSent::dispatch($message);
-
-        // Notifier les autres participants
-        foreach ($conversation->users as $participant) {
-            if ($participant->id !== $user->id) {
-                $participant->notify(new NewMessageNotification($message));
-            }
+        // 2. Récupérer l'autre utilisateur (destinataire)
+        $otherUser = $conversation->users()->where('users.id', '!=', $user->id)->first();
+        if (!$otherUser) {
+            return response()->json(['message' => 'Destinataire introuvable.'], 404);
         }
 
+        // 3. Création du message (Le message est PERSISTANT)
+        $message = Message::create([
+            'user_id' => $user->id,
+            'recever_id' => $otherUser->id,
+            'content' => $request->content,
+        ]);
+
+        // 4. Mise à jour et événements
+        $conversation->touch(); // Met à jour 'updated_at' de la conversation
+        
+        // 🛑 CORRECTION : Charge la relation 'user' (l'expéditeur) pour l'objet Message avant de le renvoyer.
+        $message->load('user'); 
+
+        MessageSent::dispatch($message);
+        $otherUser->notify(new NewMessageNotification($message));
+
+        // 5. Retourne le message créé et chargé
         return response()->json($message, 201);
     }
 }

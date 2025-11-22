@@ -2,29 +2,34 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use App\Models\Nurse;
-use App\Http\Requests\NurseStoreRequest;
-use App\Http\Requests\NurseUpdateRequest;
 use App\Models\User;
-use App\Models\ConsultationHistory;
-use Illuminate\Http\JsonResponse;
+use App\Models\Nurse;
 use App\Models\Patient;
-use App\Models\VitalSign;
 use App\Models\BloodUnit;
+use App\Models\VitalSign;
+use Illuminate\Http\Request;
+use PhpOffice\PhpWord\PhpWord;
+
+use PhpOffice\PhpWord\IOFactory;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use App\Models\ConsultationHistory;
 use App\Models\NurseActivityReport;
+use Illuminate\Support\Facades\Log;
+
+use Illuminate\Support\Facades\Storage;
+use App\Http\Requests\NurseStoreRequest;
+use Illuminate\Support\Facades\Response;
+use App\Http\Requests\NurseUpdateRequest;
 use App\Http\Requests\RecordVitalSignsRequest;
 use App\Http\Requests\CreateActivitiesReportRequest;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 class NurseController extends Controller
 {
-    /**
-     * Liste tous les infirmiers.
-     * GET /api/nurse
-     */
+    // ============================
+    // CRUD STANDARD
+    // ============================
+
     public function index(Request $request)
     {
         if (!auth()->user()->hasRole('admin') && !auth()->user()->hasRole('doctor')) {
@@ -33,41 +38,38 @@ class NurseController extends Controller
 
         $perPage = $request->query('per_page', 15);
 
-        $nurses = Nurse::with('user', 'department')
-                       ->filter($request)
-                       ->paginate($perPage);
-
-        return response()->json($nurses);
+        return response()->json(
+            Nurse::with('user', 'department')
+                ->filter($request)
+                ->paginate($perPage)
+        );
     }
 
-    /**
-     * Affiche les détails d'un infirmier.
-     * GET /api/nurse/{nurse}
-     */
     public function show(Nurse $nurse)
     {
-        if (!auth()->user()->hasRole('admin') && !auth()->user()->hasRole('doctor') && auth()->user()->id !== $nurse->user_id) {
+        if (!auth()->user()->hasRole('admin') &&
+            !auth()->user()->hasRole('doctor') &&
+            auth()->user()->id !== $nurse->user_id) {
+
             return response()->json(['message' => 'Accès non autorisé.'], 403);
         }
 
         $nurse->load(['user', 'department']);
-        return $nurse;
+        return response()->json($nurse);
     }
 
-    /**
-     * Crée un infirmier et son utilisateur associé.
-     * POST /api/nurse/register
-     */
     public function create(NurseStoreRequest $request): JsonResponse
     {
         $data = $request->validated();
 
         DB::beginTransaction();
-
         try {
             $profilePhotoPath = null;
+
             if ($request->hasFile('profile_photo')) {
-                $profilePhotoPath = $request->file('profile_photo')->store('profile_photos', 'public');
+                $profilePhotoPath = $request
+                    ->file('profile_photo')
+                    ->store('profile_photos', 'public');
             }
 
             $user = User::create([
@@ -88,6 +90,7 @@ class NurseController extends Controller
                 'user_id' => $user->id,
                 'department_id' => $data['department_id'] ?? null,
             ]);
+
             $user->update(['nurse_id' => $nurse->id]);
 
             DB::commit();
@@ -95,7 +98,7 @@ class NurseController extends Controller
             $nurse->load(['user', 'department']);
 
             return response()->json([
-                'message' => '✅ Infirmier créé avec succès.',
+                'message' => 'Infirmier créé avec succès.',
                 'nurse' => $nurse,
             ], 201);
 
@@ -107,100 +110,73 @@ class NurseController extends Controller
             }
 
             Log::error('Erreur création infirmier : ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
-                'request_data' => $request->all(),
+                'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([
-                'message' => '❌ Erreur lors de la création de l\'infirmier.',
+                'message' => 'Erreur lors de la création de l\'infirmier.',
                 'error' => $e->getMessage(),
             ], 500);
         }
     }
 
-    /**
-     * Met à jour un infirmier.
-     * PUT /api/nurse/{nurse}
-     */
     public function update(NurseUpdateRequest $request, Nurse $nurse): JsonResponse
     {
         DB::beginTransaction();
-
         try {
             $user = $nurse->user;
+
             if (!$user) {
-                // Si l'utilisateur associé n'existe pas, c'est une erreur critique
                 return response()->json(['message' => 'Utilisateur associé introuvable.'], 404);
             }
 
-            // Préparer les données de l'utilisateur pour la mise à jour
             $userData = $request->only([
                 'first_name', 'last_name', 'birth_date', 'phone',
                 'city', 'address', 'email', 'country'
             ]);
 
-            // Logique de gestion de la photo de profil
             if ($request->hasFile('profile_photo')) {
-                // Supprimer l'ancienne photo si elle existe
                 if ($user->profile_photo && Storage::disk('public')->exists($user->profile_photo)) {
                     Storage::disk('public')->delete($user->profile_photo);
                 }
-                // Stocker la nouvelle photo
-                $userData['profile_photo'] = $request->file('profile_photo')->store('profile_photos', 'public');
-            } elseif ($request->has('profile_photo') && is_null($request->input('profile_photo'))) {
-                // Gère le cas où la photo est explicitement supprimée du formulaire (champ envoyé comme null)
-                if ($user->profile_photo && Storage::disk('public')->exists($user->profile_photo)) {
-                    Storage::disk('public')->delete($user->profile_photo);
-                }
-                $userData['profile_photo'] = null; // Définir la photo de profil sur null
-            }
-            // Si profile_photo n'est pas fourni dans la requête et n'est pas explicitement null,
-            // alors le champ ne sera pas modifié dans la base de données.
 
-            // Mettre à jour le mot de passe si un nouveau est fourni dans la requête
+                $userData['profile_photo'] = $request
+                    ->file('profile_photo')
+                    ->store('profile_photos', 'public');
+            }
+
             if ($request->filled('password')) {
                 $userData['password'] = bcrypt($request->password);
             }
 
-            // Effectuer une seule mise à jour sur le modèle utilisateur
             $user->update($userData);
 
-            // Mettre à jour les données spécifiques à l'infirmier
             $nurse->update([
-                // Utiliser $request->department_id directement car il est validé par NurseUpdateRequest
                 'department_id' => $request->department_id,
                 'speciality' => $request->speciality,
             ]);
 
             DB::commit();
 
-            // Recharger les relations user et department pour la réponse
             $nurse->load(['user', 'department']);
 
             return response()->json([
-                'message' => '✅ Infirmier mis à jour avec succès.',
+                'message' => 'Infirmier mis à jour avec succès.',
                 'nurse' => $nurse,
             ]);
 
         } catch (\Throwable $e) {
-            DB::rollBack(); // Annuler la transaction en cas d'erreur
-            Log::error('❌ Erreur mise à jour infirmier : ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
-                'request_data' => $request->all(),
-            ]);
+            DB::rollBack();
+
+            Log::error('Erreur mise à jour infirmier : ' . $e->getMessage());
 
             return response()->json([
-                'message' => '❌ Erreur lors de la mise à jour de l\'infirmier.',
+                'message' => 'Erreur lors de la mise à jour.',
                 'error' => $e->getMessage(),
             ], 500);
         }
     }
 
-
-    /**
-     * Supprime un infirmier.
-     * DELETE /api/nurse/{nurse}
-     */
     public function destroy(Nurse $nurse): JsonResponse
     {
         if (!auth()->user()->hasRole('admin')) {
@@ -208,7 +184,6 @@ class NurseController extends Controller
         }
 
         DB::beginTransaction();
-
         try {
             $user = $nurse->user;
 
@@ -217,47 +192,39 @@ class NurseController extends Controller
             }
 
             $nurse->delete();
-            if ($user) {
-                $user->delete();
-            }
+            if ($user) $user->delete();
 
             DB::commit();
 
-            return response()->json(['message' => '✅ Infirmier et utilisateur supprimés avec succès.']);
+            return response()->json(['message' => 'Infirmier supprimé avec succès.']);
 
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('❌ Erreur suppression infirmier : ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
-            ]);
+            Log::error('Erreur suppression infirmier : ' . $e->getMessage());
 
             return response()->json([
-                'message' => '❌ Erreur lors de la suppression de l\'infirmier.',
+                'message' => 'Erreur lors de la suppression.',
                 'error' => $e->getMessage(),
             ], 500);
         }
     }
 
-    /**
-     * Recherche d'infirmiers.
-     * GET /api/nurse/search
-     */
     public function search(Request $request): JsonResponse
     {
         if (!auth()->user()->hasRole('admin') && !auth()->user()->hasRole('doctor')) {
             return response()->json(['message' => 'Accès non autorisé.'], 403);
         }
 
-        $nurses = Nurse::with('user', 'department')
-                       ->filter($request)
-                       ->paginate(10);
-
-        return response()->json($nurses);
+        return response()->json(
+            Nurse::with('user', 'department')
+                ->filter($request)
+                ->paginate(10)
+        );
     }
 
-    // --------------------------------------------------------------------------------
-    // Méthodes spécifiques aux actions infirmier
-    // --------------------------------------------------------------------------------
+    // ============================
+    //  UTILITAIRES
+    // ============================
 
     private function authorizeNurse(int $nurseId): ?JsonResponse
     {
@@ -265,7 +232,7 @@ class NurseController extends Controller
 
         if (!$user || $user->id !== $nurseId || !$user->hasRole('nurse')) {
             return response()->json([
-                'message' => 'Accès non autorisé. Seuls les infirmiers concernés sont permis.'
+                'message' => 'Accès non autorisé.'
             ], 403);
         }
 
@@ -276,61 +243,39 @@ class NurseController extends Controller
     {
         $patient = Patient::find($patientId);
 
-        if (!$patient) {
-            return response()->json(['message' => 'Patient non trouvé.'], 404);
-        }
-
-        return $patient;
+        return $patient ?: response()->json(['message' => 'Patient non trouvé.'], 404);
     }
+
+    // ============================
+    //  MODULE DME / SIGNES VITAUX
+    // ============================
 
     public function getPatientDme(Nurse $nurse, int $patient_id): JsonResponse
     {
-        if ($response = $this->authorizeNurse($nurse->user_id)) {
-            return $response;
-        }
+        if ($response = $this->authorizeNurse($nurse->user_id)) return $response;
 
         $patient = $this->findPatient($patient_id);
-        if ($patient instanceof JsonResponse) {
-            return $patient;
-        }
-
-        $dme = ConsultationHistory::where('patient_id', $patient->id)
-                                  ->orderBy('date_consultation', 'desc')
-                                  ->get();
-
-        $vitalSigns = VitalSign::where('patient_id', $patient->id)
-                               ->orderBy('recorded_at', 'desc')
-                               ->get();
+        if ($patient instanceof JsonResponse) return $patient;
 
         return response()->json([
             'patient_info' => $patient->load('user'),
-            'medical_history' => $dme,
-            'vital_signs_history' => $vitalSigns,
+            'medical_history' => ConsultationHistory::where('patient_id', $patient->id)->latest()->get(),
+            'vital_signs_history' => VitalSign::where('patient_id', $patient->id)->latest('recorded_at')->get(),
         ]);
     }
 
-        public function recordVitalSigns(RecordVitalSignsRequest $request, int $nurse, int $patient_id): JsonResponse
+    public function recordVitalSigns(RecordVitalSignsRequest $request, Nurse $nurse, int $patient_id): JsonResponse
     {
-        // 1. Récupération de l'infirmier(e)
-        $nurse = Nurse::findOrFail($nurse);
-
-        // 🔑 MODIFICATION : Ajouter un log pour afficher les informations sur l'infirmier(e)
-        // Nous journalisons les informations essentielles du Nurse trouvé, en utilisant le tableau de l'objet.
-        Log::info('Tentative d\'enregistrement des signes vitaux.', [
-            'nurse_id_route' => $nurse,
-            'nurse_data' => $nurse->toArray(),
+        Log::info('Tentative d’enregistrement des signes vitaux', [
+            'nurse_id' => $nurse->id,
             'patient_id' => $patient_id,
         ]);
 
         if ($response = $this->authorizeNurse($nurse->user_id)) return $response;
 
-        // 2. Récupération du patient
         $patient = $this->findPatient($patient_id);
-        if ($patient instanceof JsonResponse) {
-            return $patient;
-        }
+        if ($patient instanceof JsonResponse) return $patient;
 
-        // 3. Création de l'enregistrement des signes vitaux
         $vitalSign = VitalSign::create([
             'patient_id' => $patient->id,
             'nurse_id' => $nurse->id,
@@ -346,21 +291,22 @@ class NurseController extends Controller
             'notes' => $request->notes,
         ]);
 
-        // 4. Log de succès (optionnel)
-        Log::info('Signes vitaux enregistrés avec succès.', [
-            'nurse_id' => $nurse->id,
-            'patient_id' => $patient->id,
+        Log::info('Signes vitaux enregistrés', [
             'vital_sign_id' => $vitalSign->id
         ]);
 
-        return response()->json(['message' => 'Signes vitaux enregistrés.', 'vital_sign' => $vitalSign], 201);
+        return response()->json([
+            'message' => 'Signes vitaux enregistrés.',
+            'vital_sign' => $vitalSign
+        ], 201);
     }
 
+    // ============================
+    //  RAPPORTS D’ACTIVITÉ
+    // ============================
 
     public function createActivitiesReport(CreateActivitiesReportRequest $request, Nurse $nurse): JsonResponse
     {
-        //if ($response = $this->authorizeNurse($nurse->user_id)) return $response;
-
         $report = NurseActivityReport::create([
             'nurse_id' => $nurse->id,
             'report_date' => $request->report_date,
@@ -369,40 +315,265 @@ class NurseController extends Controller
             'patient_id' => $request->patient_id,
         ]);
 
-        return response()->json(['message' => 'Rapport créé avec succès.', 'report' => $report], 201);
+        return response()->json([
+            'message' => 'Rapport créé avec succès.',
+            'report' => $report
+        ], 201);
     }
+
+    // ============================
+    //  BANQUE DE SANG
+    // ============================
 
     public function getBloodBankOverview(Nurse $nurse): JsonResponse
     {
         if ($response = $this->authorizeNurse($nurse->user_id)) return $response;
 
-        $bloodUnits = BloodUnit::orderBy('expiration_date', 'asc')->get();
-
-        $bloodSummary = BloodUnit::select('blood_group', 'rh_factor', \DB::raw('count(*) as total_units'))
-                                 ->groupBy('blood_group', 'rh_factor')
-                                 ->get();
-
         return response()->json([
-            'available_blood_units' => $bloodUnits,
-            'blood_bank_summary' => $bloodSummary,
+            'available_blood_units' => BloodUnit::orderBy('expiration_date')->get(),
+            'blood_bank_summary' => BloodUnit::select('blood_group', 'rh_factor', DB::raw('count(*) as total_units'))
+                ->groupBy('blood_group', 'rh_factor')
+                ->get(),
         ]);
     }
+
+    // ============================
+    //  PROFILE BY USER
+    // ============================
+
     public function getProfileIdByUserId(User $user): JsonResponse
     {
-        // 🔑 Assurez-vous que la relation 'nurse' est définie sur votre modèle User
         $nurse = $user->nurse;
 
         if (!$nurse) {
-            // Le code 404 est critique car le frontend doit savoir que le profil n'existe pas
-            return response()->json([
-                'message' => 'Profil infirmier non trouvé pour cet utilisateur.'
-            ], 404);
+            return response()->json(['message' => 'Profil infirmier non trouvé.'], 404);
         }
 
-        // 🔑 POINT CLÉ : Renvoyer l'ID de la table 'nurses' (nurseId)
         return response()->json([
             'id' => $nurse->id,
             'user_id' => $nurse->user_id
         ]);
     }
+
+    // ============================
+    //  DOWNLOAD REPORT
+    // ============================
+
+   /** Téléchargement d’un rapport d’activités */
+  /**
+ * 🔥 TÉLÉCHARGEMENT PROFESSIONNEL : Rapport d'activité infirmier
+ */
+public function downloadActivityReport(Nurse $nurse, NurseActivityReport $report)
+{
+    Log::info("Tentative de téléchargement du rapport d'activité ID: {$report->id}");
+
+    try {
+        // Vérifier l'autorisation
+        if ($report->nurse_id !== $nurse->id) {
+            return response()->json(['message' => 'Accès refusé à ce rapport.'], 403);
+        }
+
+        // Charger toutes les relations nécessaires
+        $report->load([
+            'nurse.user',
+            'patient.user'
+        ]);
+
+        // Créer le document Word
+        $phpWord = new PhpWord();
+        
+        // Styles professionnels
+        $titleStyle = ['bold' => true, 'size' => 16, 'color' => '1F4E79', 'spaceAfter' => 300];
+        $headerStyle = ['bold' => true, 'size' => 12, 'color' => '2E74B5', 'spaceAfter' => 150];
+        $labelStyle = ['bold' => true, 'size' => 11, 'color' => '444444'];
+        $valueStyle = ['size' => 11, 'color' => '000000', 'spaceAfter' => 100];
+        $contentStyle = ['size' => 11, 'color' => '333333', 'spaceAfter' => 100];
+
+        // Section principale
+        $section = $phpWord->addSection();
+
+        // ====================
+        // EN-TÊTE PROFESSIONNEL
+        // ====================
+        $section->addText('RAPPORT D\'ACTIVITÉ INFIRMIER', $titleStyle);
+        $section->addText('HÔPITAL - SERVICE DE SOINS', ['bold' => true, 'size' => 12, 'color' => '666666']);
+        $section->addTextBreak(1);
+
+        // ====================
+        // INFORMATIONS DU RAPPORT
+        // ====================
+        $section->addText('INFORMATIONS GÉNÉRALES', $headerStyle);
+        
+        // Tableau des informations
+        $table = $section->addTable([
+            'borderSize' => 0,
+            'borderColor' => 'FFFFFF',
+            'cellMargin' => 50
+        ]);
+
+        // Ligne 1 : ID et Titre
+        $table->addRow();
+        $table->addCell(3000)->addText('ID du rapport:', $labelStyle);
+        $table->addCell(5000)->addText($report->id, $valueStyle);
+
+        $table->addRow();
+        $table->addCell(3000)->addText('Titre:', $labelStyle);
+        $table->addCell(5000)->addText($report->title, $valueStyle);
+
+        $table->addRow();
+        $table->addCell(3000)->addText('Date du rapport:', $labelStyle);
+        $table->addCell(5000)->addText($report->report_date->format('d/m/Y'), $valueStyle);
+
+        $table->addRow();
+        $table->addCell(3000)->addText('Date de génération:', $labelStyle);
+        $table->addCell(5000)->addText(now()->format('d/m/Y à H:i'), $valueStyle);
+
+        $section->addTextBreak(1);
+
+        // ====================
+        // INFORMATIONS PERSONNEL
+        // ====================
+        $section->addText('INFORMATIONS DU PERSONNEL', $headerStyle);
+        
+        $table2 = $section->addTable([
+            'borderSize' => 0,
+            'borderColor' => 'FFFFFF',
+            'cellMargin' => 50
+        ]);
+
+        // Infirmier
+        $nurseName = 'Non spécifié';
+        if ($report->nurse && $report->nurse->user) {
+            $firstName = $report->nurse->user->first_name ?? '';
+            $lastName = $report->nurse->user->last_name ?? '';
+            $nurseName = trim($firstName . ' ' . $lastName) ?: 'Infirmier non renseigné';
+        }
+
+        $table2->addRow();
+        $table2->addCell(3000)->addText('Infirmier:', $labelStyle);
+        $table2->addCell(5000)->addText($nurseName, $valueStyle);
+
+        // ID infirmier
+        $table2->addRow();
+        $table2->addCell(3000)->addText('Numero Infirmier:', $labelStyle);
+        $table2->addCell(5000)->addText($report->nurse_id, $valueStyle);
+
+        // Patient (si lié)
+        if ($report->patient_id && $report->patient) {
+            $patientName = 'Non spécifié';
+            if ($report->patient->user) {
+                $firstName = $report->patient->user->first_name ?? '';
+                $lastName = $report->patient->user->last_name ?? '';
+                $patientName = trim($firstName . ' ' . $lastName) ?: 'Patient non renseigné';
+            }
+
+            $table2->addRow();
+            $table2->addCell(3000)->addText('Patient concerné:', $labelStyle);
+            $table2->addCell(5000)->addText($patientName, $valueStyle);
+
+            $table2->addRow();
+            $table2->addCell(3000)->addText('Numero Patient:', $labelStyle);
+            $table2->addCell(5000)->addText($report->patient_id, $valueStyle);
+        } else {
+            $table2->addRow();
+            $table2->addCell(3000)->addText('Patient concerné:', $labelStyle);
+            $table2->addCell(5000)->addText('Rapport général (non lié à un patient spécifique)', $valueStyle);
+        }
+
+        $section->addTextBreak(1);
+
+        // ====================
+        // CONTENU DU RAPPORT
+        // ====================
+        $section->addText('CONTENU DU RAPPORT', $headerStyle);
+        
+        // Nettoyer et formater le contenu
+        $cleanedContent = strip_tags($report->content);
+        $contentLines = explode("\n", $cleanedContent);
+        
+        foreach ($contentLines as $line) {
+            if (trim($line) !== '') {
+                $section->addText(trim($line), $contentStyle);
+            } else {
+                $section->addTextBreak(1);
+            }
+        }
+
+        $section->addTextBreak(2);
+
+        // ====================
+        // PIED DE PAGE PROFESSIONNEL
+        // ====================
+        $section->addText('_________________________', ['size' => 11, 'color' => '000000']);
+        $section->addText($nurseName, ['bold' => true, 'size' => 11, 'color' => '000000']);
+        $section->addText('Infirmier', ['italic' => true, 'size' => 10, 'color' => '666666']);
+        
+        $section->addTextBreak(1);
+        $section->addText('Document généré électroniquement', [
+            'italic' => true, 
+            'size' => 9, 
+            'color' => '999999'
+        ]);
+        $section->addText('Hôpital - Service de Soins', [
+            'italic' => true, 
+            'size' => 9, 
+            'color' => '999999'
+        ]);
+
+        // ====================
+        // GÉNÉRATION DU FICHIER
+        // ====================
+        $safeTitle = $report->title ? preg_replace('/[^a-zA-Z0-9_-]/', '_', $report->title) : 'rapport_activite';
+        $fileName = "rapport_activite_{$report->id}_{$safeTitle}.docx";
+        $tempFile = tempnam(sys_get_temp_dir(), 'nurse_report') . '.docx';
+
+        // Sauvegarder le document
+        $phpWord->save($tempFile);
+
+        // Vérifier que le fichier a été créé
+        if (!file_exists($tempFile)) {
+            throw new \Exception("Échec de la génération du fichier Word.");
+        }
+
+        // Lire le contenu
+        $fileContent = file_get_contents($tempFile);
+        $fileSize = filesize($tempFile);
+
+        Log::info("Fichier Word généré avec succès - Rapport ID: {$report->id}, Taille: {$fileSize} bytes");
+
+        // Retourner la réponse de téléchargement
+        $response = response()->make($fileContent, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'Content-Disposition' => 'attachment; filename="' . $fileName . '"',
+            'Content-Length' => $fileSize,
+            'Cache-Control' => 'no-cache, no-store, must-revalidate',
+            'Pragma' => 'no-cache',
+            'Expires' => '0',
+        ]);
+
+        // Nettoyer le fichier temporaire après envoi
+        register_shutdown_function(function() use ($tempFile) {
+            if (file_exists($tempFile)) {
+                unlink($tempFile);
+            }
+        });
+
+        return $response;
+
+    } catch (\Throwable $e) {
+        Log::error('ERREUR GÉNÉRATION RAPPORT INFIRMIER', [
+            'report_id' => $report->id,
+            'nurse_id' => $nurse->id,
+            'error' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return response()->json([
+            'message' => 'Erreur lors de la génération du document Word.',
+            'error' => config('app.debug') ? $e->getMessage() : 'Erreur technique',
+        ], 500);
+    }
+}
 }
