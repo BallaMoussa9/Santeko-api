@@ -32,49 +32,52 @@ class EmergencyPhysiciansController extends Controller
         return null;
     }
     
-    public function createEmergencyPhysician(FirstResponderRequest $request): JsonResponse
-    {
-        $data = $request->validated();
+  public function createEmergencyPhysician(FirstResponderRequest $request): JsonResponse
+{
+    $data = $request->validated();
 
-        // Séparer les données de l'utilisateur et de l'urgentiste
-        $userData = Arr::only($data, [
-            'first_name', 'last_name', 'birth_date', 'phone', 'country',
-            'city', 'profile_photo', 'address', 'email', 'password', 'role_id', 'department_id'
-        ]);
+    // Séparer les données de l'utilisateur et de l'urgentiste
+    $userData = Arr::only($data, [
+        'first_name', 'last_name', 'birth_date', 'phone', 'country',
+        'city', 'profile_photo', 'address', 'email', 'password', 'role_id', 'department_id'
+    ]);
 
-        // Hasher le mot de passe
-        $userData['password'] = Hash::make($userData['password']);
+    // Hasher le mot de passe
+    $userData['password'] = Hash::make($userData['password']);
 
-        // Les données spécifiques à l'urgentiste
-        $emergencyData = Arr::only($data, ['speciality', 'location', 'status']);
+    // Les données spécifiques à l'urgentiste
+    $emergencyData = Arr::only($data, ['speciality', 'location', 'status']);
 
-        try {
-            // Transaction pour s'assurer que les deux créations se font ensemble
-            DB::beginTransaction();
+    try {
+        // Transaction pour s'assurer que les deux créations se font ensemble
+        DB::beginTransaction();
 
-            // 1️⃣ Création de l'utilisateur
-            $user = User::create($userData);
+        // 1️⃣ Création de l'urgentiste d'abord
+        $urgentist = FirstResponder::create($emergencyData);
 
-            // 2️⃣ Création de l'urgentiste lié à l'utilisateur
-            $emergencyData['user_id'] = $user->id;
-            $urgentist = FirstResponder::create($emergencyData);
+        // 2️⃣ Création de l'utilisateur lié à l'urgentiste
+        $userData['first_responder_id'] = $urgentist->id;
+        $user = User::create($userData);
 
-            DB::commit();
+        // 3️⃣ Mettre à jour l'urgentiste avec l'user_id
+        $urgentist->update(['user_id' => $user->id]);
 
-            // Retourner l'objet créé avec la relation 'user'
-            return response()->json([
-                'message' => 'Urgentiste créé avec succès.',
-                'urgentist' => $urgentist->load('user')
-            ], 201);
+        DB::commit();
 
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'message' => 'Erreur lors de la création de l\'urgentiste.',
-                'error' => $e->getMessage()
-            ], 500);
-        }
+        // Retourner l'objet créé avec la relation 'user'
+        return response()->json([
+            'message' => 'Urgentiste créé avec succès.',
+            'urgentist' => $urgentist->load('user')
+        ], 201);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json([
+            'message' => 'Erreur lors de la création de l\'urgentiste.',
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
 
     /**
      * Tableau de bord pour les alertes SOS actives (en attente ou en cours).

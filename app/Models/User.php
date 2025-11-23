@@ -54,7 +54,7 @@ class User extends Authenticatable
         'doctor_id',
         'patient_id',
         'nurse_id',
-        //'first_responder_id',
+        'first_responder_id',
     ];
 
     protected $hidden = [
