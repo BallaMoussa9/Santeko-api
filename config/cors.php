@@ -18,8 +18,10 @@ return [
 
     'allowed_origins' => [
         'http://localhost:5173',   // Front Vite
-        'http://localhost:8100',   // App mobile Ionic
-        'http://localhost',        // si nécessaire pour tests
+        'http://localhost:8100',   // Ionic web
+        'http://localhost',        // Android WebView
+        'http://127.0.0.1',        // fallback
+        'capacitor://localhost',       // si nécessaire pour tests
         'https://frontend-ruddy-iota-49.vercel.app', // Front Vercel
     ],
 
