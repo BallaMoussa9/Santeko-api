@@ -21,7 +21,8 @@ return [
         'http://localhost:8100',   // Ionic web
         'http://localhost',        // Android WebView
         'http://127.0.0.1',        // fallback
-        'capacitor://localhost',       // si nécessaire pour tests
+        'capacitor://localhost',   // si nécessaire pour tests
+        'ionic://localhost',       // 👈 AJOUTER CETTE LIGNE (Obligatoire pour iOS, utile pour Android)
         'https://frontend-ruddy-iota-49.vercel.app', // Front Vercel
     ],
 
