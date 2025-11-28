@@ -17,4 +17,10 @@ require __DIR__.'/../vendor/autoload.php';
 /** @var Application $app */
 $app = require_once __DIR__.'/../bootstrap/app.php';
 
+// Désactiver toute compression PHP/Laravel
+ini_set('zlib.output_compression', 'Off');
+header_remove('Content-Encoding');
+header_remove('Content-Length');
+
+// Gérer la requête
 $app->handleRequest(Request::capture());
