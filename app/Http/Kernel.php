@@ -2,6 +2,7 @@
 
 namespace App\Http;
 
+use Fruitcake\Cors\HandleCors;
 use Illuminate\Foundation\Http\Kernel as HttpKernel;
 
 class Kernel extends HttpKernel
@@ -41,8 +42,7 @@ class Kernel extends HttpKernel
 
         'api' => [
             // 🔑 CORRECTION CLÉ : Déplacez Fruitcake\Cors\HandleCors ici
-            \Fruitcake\Cors\HandleCors::class, // <-- AJOUTEZ CETTE LIGNE ICI
-            \App\Http\Middleware\DisableGzipMiddleware::class,
+            HandleCors::class, // <-- AJOUTEZ CETTE LIGNE ICI
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
             'throttle:api',
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
