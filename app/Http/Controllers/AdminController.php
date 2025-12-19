@@ -2,23 +2,78 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Patient;
-use App\Models\Consultation;
+use App\Mail\MailForUser;
 use App\Models\Appointment;
-use App\Models\SOSAlert; // Supposons que vous ayez un modèle pour les alertes SOS
+use Illuminate\Support\Str;
+use App\Models\Consultation;
+use App\Models\Notification;
 use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use Illuminate\Http\JsonResponse;
 
 // Form Requests pour l'administration (vous devrez les créer)
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use App\Http\Requests\Admin\CreateUserRequest;
 use App\Http\Requests\Admin\UpdateUserRequest;
+use App\Models\SOSAlert; // Supposons que vous ayez un modèle pour les alertes SOS
 
 class AdminController extends Controller
 {
+  /**
+ * Envoi d'un mail par l'admin à un ou plusieurs utilisateurs
+ */
+public function sendMail(Request $request)
+{
+    $request->validate([
+        'recipient_ids'   => 'array',
+        'recipient_ids.*' => 'exists:users,id',
+        'type'            => 'required|string|max:255',
+        'subject'         => 'required|string|max:255',
+        'message'         => 'required|string',
+        'send_to_all'     => 'required|boolean',
+    ]);
+
+    // Déterminer les destinataires
+    $recipients = $request->send_to_all
+        ? User::pluck('id')->toArray()
+        : $request->recipient_ids;
+
+    foreach ($recipients as $userId) {
+        $user = User::findOrFail($userId);
+
+        // Envoi du mail
+        Mail::to($user->email)->send(new MailForUser(
+            $request->type,
+            $request->subject,
+            $request->message
+        ));
+
+        // Sauvegarde notification
+        Notification::create([
+            'id'              => Str::uuid(),
+            'type'            => $request->type,
+            'notifiable_type' => 'User',
+            'notifiable_id'   => $user->id,
+            'data'            => json_encode([
+                'subject' => $request->subject,
+                'message' => $request->message,
+                'type'    => $request->type,
+            ]),
+            'created_at'      => now(),
+            'updated_at'      => now(),
+        ]);
+    }
+
+    return response()->json([
+        'status'  => 'success',
+        'message' => 'Emails envoyés et notifications enregistrées.'
+    ]);
+}
+
     // Méthode d'autorisation simplifiée. Dans un vrai projet, utilisez des Policies.
     private function authorizeAdmin(): JsonResponse|null
     {
@@ -67,7 +122,7 @@ class AdminController extends Controller
             'name' => $request->name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
-            'role' => $request->role,
+            'role' => $request->role, 
         ]);
 
         // Si le rôle est 'patient', créer aussi une entrée dans la table 'patients'

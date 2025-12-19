@@ -137,22 +137,13 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Routes de gestion des utilisateurs par l'Admin (plus détaillées)
         Route::prefix('admin')->group(function () {
-            Route::get('users', [AdminController::class, 'listAllUsers']); // Lister tous les utilisateurs
-            // Tableau de bord de supervision
-            Route::get('dashboard/summary', [AdminController::class, 'getDashboardSummary']);
-            Route::get('dashboard/alerts', [AdminController::class, 'getAlerts']);
-            Route::get('dashboard/appointments', [AdminController::class, 'getAppointmentsOverview']);
+    Route::get('users', [AdminController::class, 'listAllUsers']); 
+    Route::post('/send-mail', [AdminController::class, 'sendMail']);
+    Route::get('dashboard/summary', [AdminController::class, 'getDashboardSummary']);
+    Route::get('dashboard/alerts', [AdminController::class, 'getAlerts']);
+    Route::get('dashboard/appointments', [AdminController::class, 'getAppointmentsOverview']);
+});
 
-            // Exemples de routes pour la gestion des utilisateurs et des centres de santé (décommenter si besoin)
-            // Route::get('users/{userId}', [AdminController::class, 'getUserProfile']);
-            // Route::put('users/{userId}', [AdminController::class, 'updateUserProfile']);
-            // Route::delete('users/{userId}', [AdminController::class, 'deleteUser']);
-            // Route::post('users', [AdminController::class, 'createUser']);
-
-            // Route::get('health-centers', [AdminController::class, 'listHealthCenters']);
-            // Route::post('health-centers', [AdminController::class, 'createHealthCenter']);
-            // Route::put('health-centers/{id}', [AdminController::class, 'updateHealthCenter']);
-        });
 
 
     // =========================================================================
