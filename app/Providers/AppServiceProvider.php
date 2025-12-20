@@ -2,14 +2,15 @@
 
 namespace App\Providers;
 
-use Illuminate\Support\ServiceProvider;
-use Laravel\Fortify\Fortify; // 👈 Assurez-vous que cet import est présent
+use Illuminate\Support\Facades\URL;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\ServiceProvider;
 
-use Laravel\Fortify\Contracts\LoginResponse as LoginResponseContract;
-use App\Http\Responses\CustomLoginResponse;
 use App\Actions\Fortify\UpdateUserPassword;
+use App\Http\Responses\CustomLoginResponse;
 use App\Actions\Fortify\UpdateUserProfileInformation;
+use Laravel\Fortify\Contracts\LoginResponse as LoginResponseContract;
+use Laravel\Fortify\Fortify; // 👈 Assurez-vous que cet import est présent
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -32,6 +33,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if (config('app.env') !== 'local') {
+            URL::forceScheme('https');
+        }
             // 🔑 CORRECTION CLÉ : Décommenter ces lignes pour utiliser VOS actions personnalisées
             Fortify::updateUserPasswordsUsing(UpdateUserPassword::class);
             Fortify::updateUserProfileInformationUsing(UpdateUserProfileInformation::class);

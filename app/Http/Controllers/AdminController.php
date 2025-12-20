@@ -23,13 +23,13 @@ use App\Models\SOSAlert; // Supposons que vous ayez un modèle pour les alertes 
 
 class AdminController extends Controller
 {
-  /**
+ /**
  * Envoi d'un mail par l'admin à un ou plusieurs utilisateurs
  */
 public function sendMail(Request $request)
 {
     $request->validate([
-        'recipient_ids'   => 'array',
+        'recipient_ids'   => 'nullable|array',
         'recipient_ids.*' => 'exists:users,id',
         'type'            => 'required|string|max:255',
         'subject'         => 'required|string|max:255',
@@ -37,24 +37,27 @@ public function sendMail(Request $request)
         'send_to_all'     => 'required|boolean',
     ]);
 
-    // Déterminer les destinataires
-    $recipients = $request->send_to_all
-        ? User::pluck('id')->toArray()
-        : $request->recipient_ids;
+    // 1. On récupère les objets User complets (plus rapide que de faire findOrFail dans la boucle)
+    $users = $request->send_to_all
+        ? User::all()
+        : User::whereIn('id', $request->recipient_ids)->get();
 
-    foreach ($recipients as $userId) {
-        $user = User::findOrFail($userId);
+    if ($users->isEmpty()) {
+        return response()->json(['status' => 'error', 'message' => 'Aucun destinataire sélectionné.'], 400);
+    }
 
-        // Envoi du mail
-        Mail::to($user->email)->send(new MailForUser(
+    foreach ($users as $user) {
+        // 2. Envoi en file d'attente (indispensable pour éviter le "Connection Timed Out")
+        // Note: Assurez-vous que MailForUser implémente "ShouldQueue"
+        Mail::to($user->email)->queue(new MailForUser(
             $request->type,
             $request->subject,
             $request->message
         ));
 
-        // Sauvegarde notification
+        // 3. Sauvegarde notification
         Notification::create([
-            'id'              => Str::uuid(),
+            'id'              => (string) Str::uuid(), // Cast en string pour être sûr
             'type'            => $request->type,
             'notifiable_type' => 'User',
             'notifiable_id'   => $user->id,
@@ -70,7 +73,7 @@ public function sendMail(Request $request)
 
     return response()->json([
         'status'  => 'success',
-        'message' => 'Emails envoyés et notifications enregistrées.'
+        'message' => count($users) . ' emails mis en file d\'attente et notifications enregistrées.'
     ]);
 }
 
