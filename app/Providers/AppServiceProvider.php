@@ -33,7 +33,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        if (config('app.env') !== 'local') {
+        // Force le HTTPS si on est sur Render (ou en production)
+        if ($this->app->environment('production') || env('RENDER')) {
             URL::forceScheme('https');
         }
             // 🔑 CORRECTION CLÉ : Décommenter ces lignes pour utiliser VOS actions personnalisées
