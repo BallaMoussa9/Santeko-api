@@ -12,6 +12,7 @@ use App\Models\Notification;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Http\JsonResponse;
+use App\Services\BrevoMailer;
 
 // Form Requests pour l'administration (vous devrez les créer)
 use App\Http\Controllers\Controller;
@@ -23,10 +24,7 @@ use App\Models\SOSAlert; // Supposons que vous ayez un modèle pour les alertes 
 
 class AdminController extends Controller
 {
- /**
- * Envoi d'un mail par l'admin à un ou plusieurs utilisateurs
- */
-public function sendMail(Request $request)
+ public function sendMail(Request $request)
 {
     $request->validate([
         'recipient_ids'   => 'nullable|array',
@@ -37,7 +35,6 @@ public function sendMail(Request $request)
         'send_to_all'     => 'required|boolean',
     ]);
 
-    // 1. On récupère les objets User complets (plus rapide que de faire findOrFail dans la boucle)
     $users = $request->send_to_all
         ? User::all()
         : User::whereIn('id', $request->recipient_ids)->get();
@@ -46,18 +43,23 @@ public function sendMail(Request $request)
         return response()->json(['status' => 'error', 'message' => 'Aucun destinataire sélectionné.'], 400);
     }
 
-    foreach ($users as $user) {
-        // 2. Envoi en file d'attente (indispensable pour éviter le "Connection Timed Out")
-        // Note: Assurez-vous que MailForUser implémente "ShouldQueue"
-        Mail::to($user->email)->queue(new MailForUser(
-            $request->type,
-            $request->subject,
-            $request->message
-        ));
+    $brevo = new BrevoMailer();
 
-        // 3. Sauvegarde notification
+    foreach ($users as $user) {
+        $html = "
+            <h2 style='color:#0040d0;'>Notification - {$request->type}</h2>
+            <p><strong>Sujet :</strong> {$request->subject}</p>
+            <p>{$request->message}</p>
+            <hr>
+            <p style='font-size:12px;color:#888;'>Ce message est généré automatiquement par SanTeko.</p>
+        ";
+
+        // Envoi via API Brevo
+        $brevo->send($user->email, $request->subject, $html);
+
+        // Sauvegarde notification
         Notification::create([
-            'id'              => (string) Str::uuid(), // Cast en string pour être sûr
+            'id'              => (string) \Str::uuid(),
             'type'            => $request->type,
             'notifiable_type' => 'User',
             'notifiable_id'   => $user->id,
@@ -73,7 +75,7 @@ public function sendMail(Request $request)
 
     return response()->json([
         'status'  => 'success',
-        'message' => count($users) . ' emails mis en file d\'attente et notifications enregistrées.'
+        'message' => count($users) . ' emails envoyés et notifications enregistrées.'
     ]);
 }
 
