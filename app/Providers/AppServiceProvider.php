@@ -33,10 +33,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Force le HTTPS si on est sur Render (ou en production)
-        if ($this->app->environment('production') || env('RENDER')) {
-            URL::forceScheme('https');
-        }
+       if (config('app.env') === 'production') {
+        // Force le protocole HTTPS
+        URL::forceScheme('https');
+        
+        // Force Laravel à utiliser l'URL définie dans APP_URL pour les assets/storage
+        $this->app['url']->forceRootUrl(config('app.url'));
+    }
             // 🔑 CORRECTION CLÉ : Décommenter ces lignes pour utiliser VOS actions personnalisées
             Fortify::updateUserPasswordsUsing(UpdateUserPassword::class);
             Fortify::updateUserProfileInformationUsing(UpdateUserProfileInformation::class);
