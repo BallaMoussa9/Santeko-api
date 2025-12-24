@@ -164,8 +164,7 @@ class ChatController extends BaseController
         // 🛑 CORRECTION : Charge la relation 'user' (l'expéditeur) pour l'objet Message avant de le renvoyer.
         $message->load('user'); 
 
-        MessageSent::dispatch($message);
-        $otherUser->notify(new NewMessageNotification($message));
+       
 
         // 5. Retourne le message créé et chargé
         return response()->json($message, 201);
