@@ -26,7 +26,6 @@ class AdminController extends Controller
 {
 public function sendMail(Request $request)
 {
-    // 1. Validation des données entrantes
     $request->validate([
         'recipient_ids'   => 'nullable|array',
         'recipient_ids.*' => 'exists:users,id',
@@ -36,7 +35,6 @@ public function sendMail(Request $request)
         'send_to_all'     => 'required|boolean',
     ]);
 
-    // 2. Sélection des destinataires
     $users = $request->send_to_all
         ? User::all()
         : User::whereIn('id', $request->recipient_ids)->get();
@@ -45,10 +43,9 @@ public function sendMail(Request $request)
         return response()->json(['status' => 'error', 'message' => 'Aucun destinataire sélectionné.'], 400);
     }
 
-    // 3. Boucle d'envoi et de notification
+    $sentCount = 0;
+
     foreach ($users as $user) {
-        
-        // Données à transmettre à votre classe Mailable (MailForUser)
         $details = [
             'type'    => $request->type,
             'subject' => $request->subject,
@@ -56,34 +53,33 @@ public function sendMail(Request $request)
         ];
 
         try {
-            // Envoi via Gmail (ou le driver configuré dans le .env)
-            // On utilise la classe MailForUser déjà importée dans votre contrôleur
+            // 1. On tente l'envoi du mail
             \Mail::to($user->email)->send(new \App\Mail\MailForUser($details));
-
-            // 4. Sauvegarde de la notification en base de données seulement si l'envoi réussit
-            Notification::create([
-                'id'              => (string) \Str::uuid(),
-                'type'            => $request->type,
-                'notifiable_type' => 'User',
-                'notifiable_id'   => $user->id,
-                'data'            => json_encode([
-                    'subject' => $request->subject,
-                    'message' => $request->message,
-                    'type'    => $request->type,
-                ]),
-                'created_at'      => now(),
-                'updated_at'      => now(),
-            ]);
+            
+            // 2. Si l'envoi réussit, on incrémente le compteur
+            $sentCount++;
 
         } catch (\Exception $e) {
-            // Optionnel : Loguer l'erreur si un mail échoue pour ne pas bloquer toute la boucle
-            \Log::error("Échec d'envoi de mail à {$user->email} : " . $e->getMessage());
+            // 3. Si l'envoi échoue, on log l'erreur mais on ne bloque pas tout
+            \Log::error("Erreur SMTP Gmail pour {$user->email} : " . $e->getMessage());
         }
+
+        // 4. ON ENREGISTRE DANS LA BASE QUAND MÊME (ou seulement si réussite, au choix)
+        // Je le mets ici pour que tu puisses voir tes données en base même si le mail bug
+        Notification::create([
+            'id'              => (string) \Str::uuid(),
+            'type'            => $request->type,
+            'notifiable_type' => 'User',
+            'notifiable_id'   => $user->id,
+            'data'            => json_encode($details),
+            'created_at'      => now(),
+            'updated_at'      => now(),
+        ]);
     }
 
     return response()->json([
         'status'  => 'success',
-        'message' => count($users) . ' emails traités et notifications enregistrées.'
+        'message' => $sentCount . ' emails envoyés avec succès. Notifications enregistrées.'
     ]);
 }
 
