@@ -364,10 +364,11 @@ Route::prefix('chat')->group(function () {
     Route::get('/', 'getAllMedicalReport');
     Route::get('/search', 'medicalreportSearch');
     Route::get('/{report}', 'showreport');
-    Route::delete('/{report}', 'deleteMedicalreport'); // 🔥 CORRECTION: Nom de méthode
+    Route::delete('/{report}', 'deleteMedicalreport');
     Route::put('/{report}', 'update');
-    Route::get('/{report}/download', 'downloadReport'); // ✅ Route de téléchargement
-});
+    Route::get('/{report}/download', 'downloadReport'); 
+
+        });
  Route::prefix('/doctors/{doctorId}/patients/{patientId}/medical-reports')->controller(MedicalReportController::class)->group(function () {
         Route::get('/', 'indexByDoctorAndPatient'); // Récupérer les rapports pour un docteur et patient spécifique
         Route::post('/', 'storeByDoctorAndPatient'); // Créer un rapport pour un docteur et patient spécifique

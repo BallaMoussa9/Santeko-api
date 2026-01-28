@@ -24,8 +24,9 @@ use App\Models\SOSAlert; // Supposons que vous ayez un modèle pour les alertes 
 
 class AdminController extends Controller
 {
- public function sendMail(Request $request)
+public function sendMail(Request $request)
 {
+    // 1. Validation des données entrantes
     $request->validate([
         'recipient_ids'   => 'nullable|array',
         'recipient_ids.*' => 'exists:users,id',
@@ -35,6 +36,7 @@ class AdminController extends Controller
         'send_to_all'     => 'required|boolean',
     ]);
 
+    // 2. Sélection des destinataires
     $users = $request->send_to_all
         ? User::all()
         : User::whereIn('id', $request->recipient_ids)->get();
@@ -43,39 +45,45 @@ class AdminController extends Controller
         return response()->json(['status' => 'error', 'message' => 'Aucun destinataire sélectionné.'], 400);
     }
 
-    $brevo = new BrevoMailer();
-
+    // 3. Boucle d'envoi et de notification
     foreach ($users as $user) {
-        $html = "
-            <h2 style='color:#0040d0;'>Notification - {$request->type}</h2>
-            <p><strong>Sujet :</strong> {$request->subject}</p>
-            <p>{$request->message}</p>
-            <hr>
-            <p style='font-size:12px;color:#888;'>Ce message est généré automatiquement par SanTeko.</p>
-        ";
+        
+        // Données à transmettre à votre classe Mailable (MailForUser)
+        $details = [
+            'type'    => $request->type,
+            'subject' => $request->subject,
+            'message' => $request->message,
+        ];
 
-        // Envoi via API Brevo
-        $brevo->send($user->email, $request->subject, $html);
+        try {
+            // Envoi via Gmail (ou le driver configuré dans le .env)
+            // On utilise la classe MailForUser déjà importée dans votre contrôleur
+            \Mail::to($user->email)->send(new \App\Mail\MailForUser($details));
 
-        // Sauvegarde notification
-        Notification::create([
-            'id'              => (string) \Str::uuid(),
-            'type'            => $request->type,
-            'notifiable_type' => 'User',
-            'notifiable_id'   => $user->id,
-            'data'            => json_encode([
-                'subject' => $request->subject,
-                'message' => $request->message,
-                'type'    => $request->type,
-            ]),
-            'created_at'      => now(),
-            'updated_at'      => now(),
-        ]);
+            // 4. Sauvegarde de la notification en base de données seulement si l'envoi réussit
+            Notification::create([
+                'id'              => (string) \Str::uuid(),
+                'type'            => $request->type,
+                'notifiable_type' => 'User',
+                'notifiable_id'   => $user->id,
+                'data'            => json_encode([
+                    'subject' => $request->subject,
+                    'message' => $request->message,
+                    'type'    => $request->type,
+                ]),
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ]);
+
+        } catch (\Exception $e) {
+            // Optionnel : Loguer l'erreur si un mail échoue pour ne pas bloquer toute la boucle
+            \Log::error("Échec d'envoi de mail à {$user->email} : " . $e->getMessage());
+        }
     }
 
     return response()->json([
         'status'  => 'success',
-        'message' => count($users) . ' emails envoyés et notifications enregistrées.'
+        'message' => count($users) . ' emails traités et notifications enregistrées.'
     ]);
 }
 

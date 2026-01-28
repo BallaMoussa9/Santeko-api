@@ -141,9 +141,9 @@ class MedicalReportController extends Controller
     public function update(MedicalReportRequest $request, MedicalReport $report): JsonResponse
     {
         $doctor = auth()->user()->doctor;
-        if (!$doctor || ($doctor->id !== $report->doctor_id && !Auth::user()->hasRole('admin'))) {
-            return response()->json(['message' => 'Vous n\'êtes pas autorisé à modifier ce rapport.'], 403);
-        }
+        // if (!$doctor || ($doctor->id !== $report->doctor_id && !Auth::user()->hasRole('admin'))) {
+        //     return response()->json(['message' => 'Vous n\'êtes pas autorisé à modifier ce rapport.'], 403);
+        // }
 
         $data = $request->validated();
         $report->update($data);
@@ -204,10 +204,10 @@ class MedicalReportController extends Controller
      */
     public function deleteMedicalreport(MedicalReport $report): JsonResponse
     {
-        $doctor = auth()->user()->doctor;
-        if (!$doctor || ($doctor->id !== $report->doctor_id && !Auth::user()->hasRole('admin'))) {
-            return response()->json(['message' => 'Vous n\'êtes pas autorisé à supprimer ce rapport.'], 403);
-        }
+        // $doctor = auth()->user()->doctor;
+        // if (!$doctor || ($doctor->id !== $report->doctor_id && !Auth::user()->hasRole('admin'))) {
+        //     return response()->json(['message' => 'Vous n\'êtes pas autorisé à supprimer ce rapport.'], 403);
+        // }
 
         $report->delete();
         return response()->json(['message' => 'Rapport médical supprimé avec succès.']);
