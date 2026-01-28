@@ -11,24 +11,26 @@ class MailForUser extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
-    public $type;
-    public $subjectText;
-    public $messageText;
+    // On utilise un tableau pour plus de flexibilité
+    public $details;
 
-    public function __construct($type, $subjectText, $messageText)
+    /**
+     * On change le constructeur pour accepter le tableau $details 
+     * envoyé depuis le contrôleur.
+     */
+    public function __construct(array $details)
     {
-        $this->type        = $type;
-        $this->subjectText = $subjectText;
-        $this->messageText = $messageText;
+        $this->details = $details;
     }
 
     public function build()
     {
-        return $this->subject($this->subjectText)
+        // On récupère les données via les clés du tableau
+        return $this->subject($this->details['subject'] ?? 'Notification SanTeko')
                     ->html("
-                        <h2 style='color:#0040d0;'>Notification - {$this->type}</h2>
-                        <p><strong>Sujet :</strong> {$this->subjectText}</p>
-                        <p>{$this->messageText}</p>
+                        <h2 style='color:#0040d0;'>Notification - " . ($this->details['type'] ?? 'Info') . "</h2>
+                        <p><strong>Sujet :</strong> " . ($this->details['subject'] ?? '') . "</p>
+                        <p>" . ($this->details['message'] ?? '') . "</p>
                         <hr>
                         <p style='font-size:12px;color:#888;'>Ce message est généré automatiquement par SanTeko.</p>
                     ");
