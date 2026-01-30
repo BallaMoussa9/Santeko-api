@@ -5,11 +5,11 @@ namespace App\Mail;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue; 
 use Illuminate\Mail\Mailable;
-use Illuminate\Queue\SerializesModels;
+use Illuminate\Queue\SerializesModels; 
 
 class MailForUser extends Mailable 
 {
-    use Queueable, SerializesModels;
+    use Queueable , SerializesModels;
 
     // On utilise un tableau pour plus de flexibilité
     public $details;
