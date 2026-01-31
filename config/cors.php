@@ -23,7 +23,8 @@ return [
         'http://127.0.0.1',        // fallback
         'capacitor://localhost',   // si nécessaire pour tests
         'ionic://localhost',       // 👈 AJOUTER CETTE LIGNE (Obligatoire pour iOS, utile pour Android)
-        'https://frontend-ruddy-iota-49.vercel.app', // Front Vercel
+        //'https://frontend-ruddy-iota-49.vercel.app', // Front Vercel
+        ' http://santeko.abdatytch.com/api/'
     ],
 
     'allowed_origins_patterns' => [],

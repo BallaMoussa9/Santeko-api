@@ -393,3 +393,4 @@ Route::prefix('chat')->group(function () {
 Route::get('/', function () {
     return 'Bienvenue sur l’API Santeko';
 });
+
