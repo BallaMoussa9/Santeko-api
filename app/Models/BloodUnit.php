@@ -10,10 +10,10 @@ class BloodUnit extends Model
 {
     use HasFactory;
 
-    // Nom de la table si elle n'est pas la convention "blood_units" (votre structure le suggère)
     protected $table = 'blood_units';
 
     protected $fillable = [
+        'patient_id',    // Changé : donor_id -> patient_id
         'blood_group',
         'rh_factor',
         'unit_number',
@@ -21,7 +21,6 @@ class BloodUnit extends Model
         'expiration_date',
         'status',
         'location',
-        'donor_id',
     ];
 
     protected $casts = [
@@ -30,16 +29,19 @@ class BloodUnit extends Model
     ];
 
     /**
-     * Une unité de sang appartient à un donneur.
+     * Une unité de sang appartient à un patient (donneur).
      */
-    public function donor(): BelongsTo
+    public function patient(): BelongsTo
     {
-        return $this->belongsTo(Donor::class, 'donor_id');
+        return $this->belongsTo(Patient::class, 'patient_id');
     }
 
-    // Vous pouvez aussi ajouter d'autres relations ici, par exemple avec les "Analyses" si une analyse est faite sur l'unité de sang.
-    // public function analyses(): HasMany
-    // {
-    //     return $this->hasMany(Analyse::class, 'blood_unit_id');
-    // }
+    /**
+     * Scope pour récupérer uniquement le sang disponible
+     */
+    public function scopeAvailable($query)
+    {
+        return $query->where('status', 'available')
+                     ->where('expiration_date', '>', now());
+    }
 }

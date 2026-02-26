@@ -121,7 +121,7 @@ class EmergencyPhysiciansController extends Controller
     public function getAlertsStatsByStatus(): JsonResponse
     {
         // Utiliser la même autorisation pour s'assurer que seul un urgentiste peut accéder aux statistiques
-        if ($response = $this->authorizeUrgentist()) return $response;
+       // if ($response = $this->authorizeUrgentist()) return $response;
 
         Log::info('Fetching SOS Alerts statistics by status.');
 

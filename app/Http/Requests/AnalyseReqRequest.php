@@ -29,7 +29,7 @@ class AnalyseReqRequest extends FormRequest
             // 'patient_id' n'est pas attendu non plus, il est dérivé de la demande 'Analyse' parente.
             // 'labtechnician_id' n'est pas attendu non plus, il vient de l'utilisateur authentifié.
 
-            'lab_id' => ['required', 'integer', 'exists:laboratories,id'], // Correction du nom de table si 'laboratorys' est 'laboratories'
+            'lab_id' => ['nullable', 'integer', 'exists:laboratorys,id'], // Correction du nom de table si 'laboratorys' est 'laboratories'
             'analyse_type' => ['required', 'string', 'max:255'],
 
             'resultat_text' => ['nullable', 'string'], // Rend le texte optionnel

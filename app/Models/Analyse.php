@@ -2,15 +2,16 @@
 
 namespace App\Models;
 
+use App\Models\AnalyseRequest;
+use App\Models\Doctor;
+use App\Models\Laboratory;
+use App\Models\LabTechnician;
+use App\Models\Patient;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\AnalyseRequest;
-use App\Models\Laboratory;
-use App\Models\Patient;
-use App\Models\LabTechnician;
-use App\Models\User;
 
 /**
  * @mixin IdeHelperAnalyse
@@ -86,6 +87,6 @@ class Analyse extends Model
      */
     public function doctor(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'doctor_id');
+        return $this->belongsTo(Doctor::class, 'doctor_id');
     }
 }

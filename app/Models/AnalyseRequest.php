@@ -22,7 +22,7 @@ class AnalyseRequest extends Model
      * @var array<int, string>
      */
     protected $fillable = [
-        'analyse_id',          // Changed from 'analyses_id' for consistency
+        'analyses_id',          // Changed from 'analyses_id' for consistency
         'patient_id',          // Kept for now, but can be removed for normalization
         'labtechnician_id',    // Corrected to singular
         'lab_id',

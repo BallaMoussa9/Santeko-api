@@ -351,10 +351,15 @@ Route::prefix('chat')->group(function () {
         Route::put('requests/{requestId}/status', [LabController::class, 'updateLabRequestStatus']); // Mettre à jour le statut
         // Enregistrer les résultats des examens
         Route::post('requests/{requestId}/results', [LabController::class, 'uploadLabResults']); // Attacher les résultats
+        Route::get('by-user/{userId}', [LabController::class, 'showByUser']);
+        Route::get('ready-analyses', [LabController::class, 'getCompletedAnalyses']);
+        // Routes pour le sang
+    Route::get('/blood-stock', [LabController::class, 'getBloodStock']);
+    Route::post('/blood-store', [LabController::class, 'storeBloodUnit']);
     });
 
 
-
+   
 
     // =========================================================================
     // 10. ROUTES POUR LES RAPPORTS MÉDICAUX (`MedicalReport`)

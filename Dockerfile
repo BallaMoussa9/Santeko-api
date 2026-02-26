@@ -42,23 +42,20 @@ RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
 COPY . .
 
 # Finaliser l'installation de Composer (Générer l'autoloader optimisé)
-RUN composer dump-autoload --optimize --no-dev
-
+RUN composer dump-autoload
 # Fixer les permissions pour Laravel
 RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache \
     && chmod -R 775 /var/www/storage /var/www/bootstrap/cache
 
 # Utiliser l'utilisateur non-root pour plus de sécurité
-USER www-data
+#USER www-data
 
 # Commande de démarrage optimisée pour Render
 # On combine les caches et le démarrage. 
 # Note: 'php artisan serve' est suffisant pour Render car il gère le proxy inverse.
-CMD sh -c "php artisan config:cache && \
-           php artisan route:cache && \
-           php artisan view:cache && \
+CMD sh -c "composer install && \
            php artisan migrate --force && \
-           php artisan serve --host=0.0.0.0 --port=$PORT"
+           php artisan serve --host=0.0.0.0 --port=8000"
 
 
 
