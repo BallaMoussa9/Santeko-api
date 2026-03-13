@@ -23,13 +23,13 @@ class LabTechnicianController extends Controller
     /**
      * Affiche la liste des techniciens de laboratoire.
      */
-    public function index(): JsonResponse
-    {
-        // Une politique d'autorisation peut être utilisée pour contrôler l'accès
-       // Gate::authorize('viewAny', LabTechnician::class);
-        $labTechnicians = LabTechnician::with(['user', 'laboratory'])->get();
-        return response()->json($labTechnicians);
-    }
+   public function index(): JsonResponse
+{
+    // Le 'with' est OBLIGATOIRE pour remplir les objets 'user' et 'laboratory'
+    $labTechnicians = LabTechnician::with(['user', 'laboratory'])->get();
+    
+    return response()->json($labTechnicians);
+}
 
     /**
      * Crée un nouveau technicien.

@@ -111,10 +111,11 @@ class User extends Authenticatable
         return $this->hasOne(FirstResponder::class, 'user_id'); 
       }
 
-    public function labTechnician(): HasOne
-    {
-        return $this->hasOne(LabTechnician::class);
-    }
+    public function labTechnician(): BelongsTo
+{
+    // L'utilisateur appartient à un technicien via la colonne lab_technician_id
+    return $this->belongsTo(LabTechnician::class, 'user_id');
+}
 
     // 🔑 NOUVELLE RELATION D'AFFECTATION (pour la colonne department_id)
     /**

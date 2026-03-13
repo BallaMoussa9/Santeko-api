@@ -41,16 +41,24 @@ class LabController extends Controller
      * GET /api/lab/requests
      */
     public function listLabRequests(Request $request): JsonResponse
-    {
-        $query = Analyse::with(['patient.user', 'doctor.user']);
+{
+    // 1. Récupérer toutes les analyses
+    $analyses = Analyse::with(['patient.user', 'doctor.user'])
+                ->orderBy('created_at', 'desc')
+                ->get();
 
-        if ($request->has('status')) {
-            $query->where('status', $request->status);
-        }
+    // 2. Récupérer tous les résultats existants
+    $resultats = AnalyseRequest::all();
 
-        $analyses = $query->orderBy('created_at', 'desc')->get();
-        return response()->json($analyses);
-    }
+    // 3. LOGIQUE : Mapper les résultats aux analyses
+    $analyses->map(function ($analyse) use ($resultats) {
+        // On cherche le résultat qui correspond à cette analyse
+        $analyse->resultats = $resultats->where('analyses_id', $analyse->id)->values();
+        return $analyse;
+    });
+
+    return response()->json($analyses);
+}
  public function createAnalyseRequest(Request $request): JsonResponse
 {
     $data = $request->validate([

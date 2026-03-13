@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Laboratory extends Model
 {
@@ -26,10 +28,7 @@ class Laboratory extends Model
     /**
      * A laboratory has many analyses.
      */
-    public function analyses(): HasMany
-    {
-        return $this->hasMany(Analyse::class, 'laboratory_id');
-    }
+    
 
     /**
      * A laboratory has many lab technicians.
@@ -46,4 +45,9 @@ class Laboratory extends Model
     {
         return $this->belongsTo(Department::class, 'department_id');
     }
+   public function user(): HasOne
+{
+    // Un technicien a un utilisateur lié dont la clé étrangère est dans la table users
+    return $this->hasOne(User::class, 'lab_technician_id');
+}
 }

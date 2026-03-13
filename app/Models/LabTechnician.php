@@ -23,7 +23,7 @@ class LabTechnician extends Model
 
     /**
      * Un technicien appartient à un laboratoire.
-     */
+     */ 
     public function laboratory(): BelongsTo
     {
         return $this->belongsTo(Laboratory::class, 'laboratory_id');
@@ -42,6 +42,6 @@ class LabTechnician extends Model
      */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, 'user_id');
     }
 }

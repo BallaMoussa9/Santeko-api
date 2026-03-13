@@ -46,11 +46,11 @@ class Analyse extends Model
      * Une Analyse (demande) peut avoir plusieurs résultats (AnalyseRequest).
      * @return HasMany
      */
-    public function analyseRequests(): HasMany
+    public function resultats(): HasMany
     {
         // Utilise la clé étrangère 'analyse_id' par convention. Si votre colonne est 'analyses_id',
         // changez-la en 'analyse_id' dans la migration ou spécifiez-le explicitement.
-        return $this->hasMany(AnalyseRequest::class, 'analyse_id');
+        return $this->hasMany(AnalyseRequest::class, 'analyses_id','id');
     }
 
     /**

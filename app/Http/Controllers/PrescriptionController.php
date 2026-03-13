@@ -106,7 +106,7 @@ public function index($patientId): JsonResponse
         Log::info('=== STORE PRESCRIPTION - VALIDATION DIRECTE ===', [
             'user_id' => $user->id,
             'doctor_id' => $doctorId,
-            'patient_id' => $patientId,
+            'patient_id' => $patientId, 
             'request_data' => $request->all()
         ]);
 
