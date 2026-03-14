@@ -13,7 +13,8 @@ return [
         'capacitor://localhost',
         'ionic://localhost',
         'https://frontend-ruddy-iota-49.vercel.app',
-        'https://santeko.abdatytch.com' // Sans espace et sans /api/ à la fin
+        'https://santeko.abdatytch.com', // Sans espace et sans /api/ à la fin
+        'http://72.61.145.76:5173',
     ],
 
     'allowed_origins_patterns' => [],
